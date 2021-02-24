@@ -43,12 +43,13 @@ void IProtoFd::onSendInternal(void *handle, uint16_t uid, uint8_t *pdata, int si
 }
 
 void IProtoFd::begin(write_block_cb_t writecb,
-                     read_block_cb_t readcb)
+                     read_block_cb_t readcb, void* userContext) 
 {
     tiny_fd_init_t        init{};
     init.write_func       = writecb;
     init.read_func        = readcb;
     init.pdata            = this;
+    init.user_context     = userContext;
     init.on_frame_cb      = onReceiveInternal;
     init.on_sent_cb       = onSendInternal;
     init.buffer           = m_buffer;
@@ -64,7 +65,7 @@ void IProtoFd::begin(write_block_cb_t writecb,
 
 void IProtoFd::begin()
 {
-    begin( nullptr, nullptr );
+    begin( nullptr, nullptr, nullptr );
 }
 
 void IProtoFd::end()

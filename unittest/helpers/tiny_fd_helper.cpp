@@ -40,6 +40,7 @@ TinyHelperFd::TinyHelperFd(FakeEndpoint * endpoint,
     init.retry_timeout    = init.send_timeout ? (init.send_timeout / 2) : 200;
     init.retries          = 2;
     init.crc_type         = HDLC_CRC_16;
+    init.user_context     = this;
 
     tiny_fd_init( &m_handle, &init  );
 }

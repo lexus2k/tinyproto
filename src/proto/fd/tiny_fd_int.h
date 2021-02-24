@@ -29,7 +29,7 @@ extern "C" {
 
 #include <stdint.h>
 #include "proto/hdlc/tiny_hdlc.h"
-#include "hal/tiny_types.h"
+#include "proto/hal/tiny_types.h"
 
 #define FD_MIN_BUF_SIZE(mtu,window) (sizeof(tiny_fd_data_t) + \
                  (sizeof(tiny_i_frame_info_t *) + sizeof(tiny_i_frame_info_t) + mtu) * ( window + 1 ))
@@ -140,6 +140,8 @@ typedef struct tiny_fd_data_t
     } s_u_frames;
     /// user specific data
     void *             user_data;
+    // pointer to user context 
+    void *             user_context;
 } tiny_fd_data_t;
 
 #ifdef __cplusplus

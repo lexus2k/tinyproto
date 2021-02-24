@@ -28,6 +28,7 @@
 
 #include "TinyPacket.h"
 #include "proto/fd/tiny_fd.h"
+#include "proto/fd/tiny_fd_int.h"
 
 #ifdef ARDUINO
 #   include <HardwareSerial.h>
@@ -67,6 +68,19 @@ public:
     }
 
     virtual ~IProtoFd() = default;
+
+    /**
+     * Initializes protocol internal variables.
+     * If you need to switch communication with other destination
+     * point, you can call this method one again after calling end().
+     * @param writecb - write function to some physical channel
+     * @param readcb  - read function from some physical channel
+     * @param userContext - pointer to user context
+     * @return None
+     */
+    void begin          (write_block_cb_t writecb,
+                         read_block_cb_t readcb,
+                         void* userContext = nullptr);
 
     /**
      * Initializes protocol internal variables.
@@ -260,13 +274,13 @@ public:
      * Sets receive callback for incoming messages
      * @param on_receive user callback to process incoming messages. The processing must be non-blocking
      */
-    void setReceiveCallback(void (*on_receive)(IPacket &pkt) = nullptr) { m_onReceive = on_receive; };
+    void setReceiveCallback(void (*on_receive)(void* userContext, IPacket &pkt) = nullptr) { m_onReceive = on_receive; };
 
     /**
      * Sets send callback for outgoing messages
      * @param on_send user callback to process outgoing messages. The processing must be non-blocking
      */
-    void setSendCallback(void (*on_send)(IPacket &pkt) = nullptr) { m_onSend = on_send; };
+    void setSendCallback(void (*on_send)(void* userContext, IPacket &pkt) = nullptr) { m_onSend = on_send; };
 
     /**
      * Sets desired window size. Use this function only before begin() call.
@@ -293,7 +307,7 @@ protected:
     {
         IPacket pkt((char *)pdata, size);
         pkt.m_len = size;
-        if ( m_onReceive ) m_onReceive( pkt );
+        if ( m_onReceive ) m_onReceive( m_handle->user_context, pkt );
     }
 
     /**
@@ -306,7 +320,7 @@ protected:
     {
         IPacket pkt((char *)pdata, size);
         pkt.m_len = size;
-        if ( m_onSend ) m_onSend( pkt );
+        if ( m_onSend ) m_onSend(m_handle->user_context, pkt );
     }
 
 private:
@@ -328,10 +342,10 @@ private:
     uint8_t             m_window = 3;
 
     /** Callback, when new frame is received */
-    void              (*m_onReceive)(IPacket &pkt) = nullptr;
+    void              (*m_onReceive)(void* p, IPacket &pkt) = nullptr;
 
     /** Callback, when new frame is sent */
-    void              (*m_onSend)(IPacket &pkt) = nullptr;
+    void              (*m_onSend)(void* p, IPacket &pkt) = nullptr;
 
     /** Internal function */
     static void         onReceiveInternal(void *handle, uint16_t uid, uint8_t *pdata, int size);
@@ -349,7 +363,7 @@ class ProtoFd: public IProtoFd
 public:
     ProtoFd(): IProtoFd( m_data, S ) {}
 private:
-    uint8_t m_data[S]{};
+    uint8_t m_data[S];
 };
 
 /**
@@ -364,7 +378,7 @@ public:
      * Creates instance of Full duplex protocol with dynamically allocated buffer.
      * Use this class only on powerful microcontrollers.
      */
-    explicit ProtoFdD( int size ): IProtoFd( new uint8_t[size], size ) { }
+    ProtoFdD( int size ): IProtoFd( new uint8_t[size], size ) { }
     ~ProtoFdD() { delete[] m_buffer; }
 private:
 };

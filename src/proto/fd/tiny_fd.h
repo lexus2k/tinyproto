@@ -34,7 +34,7 @@ extern "C" {
 
 #include <stdint.h>
 #include "proto/hdlc/tiny_hdlc.h"
-#include "hal/tiny_types.h"
+#include "proto/hal/tiny_types.h"
 
 /**
  * @defgroup FULL_DUPLEX_API Tiny Full Duplex API functions
@@ -60,6 +60,8 @@ typedef struct tiny_fd_init_t_
     read_block_cb_t    read_func;
     /// user data for block read/write functions
     void             * pdata;
+    // pointer to user context 
+    void             * user_context;
     /// callback function to process incoming frames. Callback is called from tiny_fd_run_rx() context.
     on_frame_cb_t      on_frame_cb;
     /// Callback to get notification of sent frames. Callback is called from tiny_fd_run_tx() context.

@@ -17,10 +17,10 @@
     along with Protocol Library.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "proto/hal/tiny_types.h"
 #include "tiny_fd.h"
 #include "tiny_fd_int.h"
-#include "hal/tiny_types.h"
-#include "hal/tiny_debug.h"
+#include "proto/hal/tiny_debug.h"
 
 #include <string.h>
 
@@ -538,7 +538,8 @@ int tiny_fd_init(tiny_fd_handle_t      * handle,
 
     hdlc_init( &protocol->_hdlc );
 
-    protocol->user_data = init->pdata;
+    protocol->user_data = init->pdata; 
+    protocol->user_context = init->user_context; 
     protocol->read_func = init->read_func;
     protocol->write_func = init->write_func;
     protocol->on_frame_cb = init->on_frame_cb;
@@ -574,7 +575,7 @@ void tiny_fd_close(tiny_fd_handle_t  handle)
 static int write_func_cb(void *user_data, const void *data, int len)
 {
     tiny_fd_handle_t handle = (tiny_fd_handle_t)user_data;
-    return handle->write_func( handle->user_data, data, len );
+    return handle->write_func(handle->user_context , data, len );
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -587,7 +588,7 @@ int tiny_fd_run_rx(tiny_fd_handle_t handle, uint16_t timeout)
     do
     {
         uint8_t data;
-        result = handle->read_func( handle->user_data, &data, sizeof(data) );
+        result = handle->read_func( handle->user_context , &data, sizeof(data) );
 //        LOG(TINY_LOG_DEB, "[%p] FD run rx process data ENTER\n", handle);
         if ( result > 0 )
         {

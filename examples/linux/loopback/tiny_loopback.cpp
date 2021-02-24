@@ -17,7 +17,7 @@
     along with Protocol Library.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "hal/tiny_serial.h"
+#include "proto/hal/tiny_serial.h"
 #include "proto/half_duplex/tiny_hd.h"
 #include "TinyProtocol.h"
 #include <stdio.h>
@@ -249,7 +249,7 @@ static int run_hd(tiny_serial_handle_t port)
 tiny_serial_handle_t s_serialFd;
 Tiny::ProtoFdD *s_protoFd = nullptr;
 
-void onReceiveFrameFd(Tiny::IPacket &pkt)
+void onReceiveFrameFd(void *_,Tiny::IPacket &pkt)
 {
     if ( !s_runTest )
         fprintf(stderr, "<<< Frame received payload len=%d\n", (int)pkt.size() );
@@ -263,7 +263,7 @@ void onReceiveFrameFd(Tiny::IPacket &pkt)
     }
 }
 
-void onSendFrameFd(Tiny::IPacket &pkt)
+void onSendFrameFd(void *_, Tiny::IPacket &pkt)
 {
     if ( !s_runTest )
         fprintf(stderr, ">>> Frame sent payload len=%d\n", (int)pkt.size() );
@@ -295,7 +295,7 @@ static int run_fd(tiny_serial_handle_t port)
     proto.setSendCallback( onSendFrameFd );
     s_protoFd = &proto;
 
-    proto.begin( serial_send_fd, serial_receive_fd );
+    proto.begin( serial_send_fd, serial_receive_fd , nullptr );
     std::thread rxThread( [](Tiny::ProtoFdD &proto)->void { while (!s_terminate) proto.run_rx(200); }, std::ref(proto) );
     std::thread txThread( [](Tiny::ProtoFdD &proto)->void { while (!s_terminate) proto.run_tx(200); }, std::ref(proto) );
 
