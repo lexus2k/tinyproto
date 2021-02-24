@@ -63,6 +63,12 @@ void IProtoFd::begin(write_block_cb_t writecb,
     tiny_fd_init( &m_handle, &init  );
 }
 
+void IProtoFd::begin(write_block_cb_t writecb,
+                     read_block_cb_t readcb) 
+{
+    begin(writecb, readcb, nullptr);
+}
+
 void IProtoFd::begin()
 {
     begin( nullptr, nullptr, nullptr );

@@ -80,7 +80,7 @@ public:
      */
     void begin          (write_block_cb_t writecb,
                          read_block_cb_t readcb,
-                         void* userContext = nullptr);
+                         void* userContext);
 
     /**
      * Initializes protocol internal variables.
