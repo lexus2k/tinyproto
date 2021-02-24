@@ -34,7 +34,7 @@ extern "C" {
 
 #include <stdint.h>
 #include "proto/hdlc/tiny_hdlc.h"
-#include "proto/hal/tiny_types.h"
+#include "hal/tiny_types.h"
 
 /**
  * @defgroup FULL_DUPLEX_API Tiny Full Duplex API functions

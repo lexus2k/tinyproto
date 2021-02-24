@@ -17,7 +17,7 @@
     along with Protocol Library.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "proto/hal/tiny_serial.h"
+#include "hal/tiny_serial.h"
 #include "proto/half_duplex/tiny_hd.h"
 #include "TinyProtocol.h"
 #include <stdio.h>

@@ -17,10 +17,10 @@
     along with Protocol Library.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "proto/hal/tiny_types.h"
+#include "hal/tiny_types.h"
 #include "tiny_fd.h"
 #include "tiny_fd_int.h"
-#include "proto/hal/tiny_debug.h"
+#include "hal/tiny_debug.h"
 
 #include <string.h>
 
