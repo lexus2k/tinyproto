@@ -44,13 +44,13 @@ uint32_t s_receivedOverheadBytes = 0;
 uint32_t s_sentBytes = 0;
 uint32_t s_sentOverheadBytes = 0;
 
-void onReceive(Tiny::IPacket &pkt)
+void onReceive(void *_, Tiny::IPacket &pkt)
 {
     s_receivedBytes += pkt.size();
     s_receivedOverheadBytes += /* ESCAPE */ 2 + /* CRC16 */ 2 + /* I header */ 2 ;
 }
 
-void onSendFrameFd(Tiny::IPacket &pkt)
+void onSendFrameFd(void *_, Tiny::IPacket &pkt)
 {
     s_sentBytes += pkt.size();
     s_sentOverheadBytes += /* ESCAPE */ 2 + /* CRC16 */ 2 + /* I header */ 2 ;

@@ -25,7 +25,7 @@
  * size for the packet and use 4 packets in outgoing queue.             */
 Tiny::ProtoFd<FD_MIN_BUF_SIZE(64,4)>  proto;
 
-void onReceive(Tiny::IPacket &pkt)
+void onReceive(void *_, Tiny::IPacket &pkt)
 {
     if ( proto.write(pkt) == TINY_ERR_TIMEOUT )
     {
