@@ -32,7 +32,7 @@
 #elif defined(_WIN32)
 #include "impl/win32_hal.inl"
 #else
-#warning "Platform not supported. Multithread support is disabled"
+//#warning "Platform not supported. Multithread support is disabled"
 #include "impl/no_platform_hal.inl"
 #endif
 

@@ -1,5 +1,5 @@
 /*
-    Copyright 2019-2020 (C) Alexey Dynda
+    Copyright 2019 (C) Alexey Dynda
 
     This file is part of Tiny Protocol Library.
 
@@ -17,7 +17,7 @@
     along with Protocol Library.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "hal/tiny_types.h"
+#include "proto/hal/tiny_types.h"
 
 inline static int _iDisGetPrimask(void)
 {
@@ -39,7 +39,6 @@ inline static int _iSetPrimask(int priMask)
 void tiny_sleep(uint32_t ms)
 {
     // No support for sleep
-    return;
 }
 
 uint32_t tiny_millis()

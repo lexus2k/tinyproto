@@ -1,5 +1,5 @@
 /*
-    Copyright 2016-2020 (C) Alexey Dynda
+    Copyright 2016-2019 (C) Alexey Dynda
 
     This file is part of Tiny Protocol Library.
 
@@ -43,7 +43,7 @@ extern "C" {
 #elif defined(_WIN32)
 #include "include/win32_hal.h"
 #else
-#info "Platform not supported. Multithread support is disabled"
+#warning "Platform not supported. Multithread support is disabled"
 #include "include/no_platform_hal.h"
 #endif
 
@@ -99,6 +99,26 @@ extern "C" {
 /** @} */
 
 /**
+ * This structure contains captured statistics while the protocol
+ * sends and receives messages.
+ */
+typedef struct
+{
+    /// Number of bytes received out of frame bytes
+    uint32_t            oosyncBytes;
+    /// Number of payload bytes totally sent through the channel
+    uint32_t            bytesSent;
+    /// Number of payload bytes totally received through the channel
+    uint32_t            bytesReceived;
+    /// Number of frames, successfully sent through the channel
+    uint32_t            framesSent;
+    /// Number of frames, successfully received through the communication channel
+    uint32_t            framesReceived;
+    /// Number of broken frames received
+    uint32_t            framesBroken;
+} STinyStats;
+
+/**
  * The function writes data to communication channel port.
  * @param pdata - pointer to user private data - absent in Arduino version
  * @param buffer - pointer to the data to send to channel.
@@ -133,9 +153,9 @@ typedef int (*read_block_cb_t)(void *pdata, void *buffer, int size);
  */
 typedef void (*on_frame_cb_t)(void *handle, uint16_t uid, uint8_t *pdata, int size);
 
-#define EVENT_BITS_ALL   0xFF ///< All bits supported by tiny protocol HAL events
-#define EVENT_BITS_CLEAR 1    ///< Flag, used in tiny_events_wait()
-#define EVENT_BITS_LEAVE 0    ///< Flag, used in tiny_events_wait()
+#define EVENT_BIS_ALL  0xFF ///< All bits supported by tiny protocol HAL events
+#define EVENT_BITS_CLEAR 1  ///< Flag, used in tiny_events_wait()
+#define EVENT_BITS_LEAVE 0  ///< Flag, used in tiny_events_wait()
 
 /**
  * Creates cross-platform mutex.
