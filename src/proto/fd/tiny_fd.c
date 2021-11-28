@@ -640,6 +640,10 @@ static uint8_t *tiny_fd_get_next_frame_to_send( tiny_fd_handle_t handle, int *le
         // clear queue only, when send is done, so for now, use pointer data for sending only
         data = (uint8_t *)&handle->s_u_frames.queue[ handle->s_u_frames.queue_ptr ].u_frame;
         *len = handle->s_u_frames.queue[ handle->s_u_frames.queue_ptr ].len;
+        if ( (data[1] & HDLC_S_FRAME_MASK) == HDLC_S_FRAME_BITS )
+        {
+            handle->frames.sent_nr = data[1] >> 5;
+        }
 
         #if TINY_FD_DEBUG
         if ( (data[1] & HDLC_U_FRAME_MASK) == HDLC_U_FRAME_BITS ) {
