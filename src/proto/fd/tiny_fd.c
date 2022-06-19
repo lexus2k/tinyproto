@@ -519,6 +519,10 @@ static int __on_u_frame_read(tiny_fd_handle_t handle, uint8_t peer, void *data, 
             .control = HDLC_U_FRAME_TYPE_UA | HDLC_U_FRAME_BITS,
         };
         __put_u_s_frame_to_tx_queue(handle, TINY_FD_QUEUE_U_FRAME, &frame, 2);
+        if ( handle->peers[peer].state == TINY_FD_STATE_CONNECTED )
+        {
+            __switch_to_disconnected_state(handle, peer);
+        }
         __switch_to_connected_state(handle, peer);
     }
     else if ( type == HDLC_U_FRAME_TYPE_DISC )
@@ -1393,4 +1397,3 @@ int tiny_fd_register_peer(tiny_fd_handle_t handle, uint8_t address)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-
