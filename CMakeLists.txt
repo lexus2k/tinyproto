@@ -13,9 +13,10 @@ if (NOT DEFINED COMPONENT_DIR)
 
     project (tinyproto)
 
-    include_directories(src)
-
     add_library(tinyproto STATIC ${HEADER_FILES} ${SOURCE_FILES})
+    target_include_directories(tinyproto PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+            $<INSTALL_INTERFACE:include>)
 
     if (EXAMPLES)
         add_subdirectory(examples/linux/loopback)
@@ -26,6 +27,35 @@ if (NOT DEFINED COMPONENT_DIR)
     if (UNITTEST)
         add_subdirectory(unittest)
     endif()
+
+    # Install the library and headers
+    install(DIRECTORY src/ DESTINATION include/tinyproto
+            FILES_MATCHING
+            PATTERN "*.h"
+            PATTERN "*.hpp"
+            PATTERN "src/hal/single_core" EXCLUDE)
+            
+    install(TARGETS tinyproto
+            EXPORT tinyprotoTargets
+            ARCHIVE DESTINATION lib
+            LIBRARY DESTINATION lib
+            RUNTIME DESTINATION bin
+            INCLUDES DESTINATION include)
+
+    install(EXPORT tinyprotoTargets
+            FILE TinyProtoTargets.cmake
+            NAMESPACE TinyProto::
+            DESTINATION lib/cmake/tinyproto)
+
+    include(CMakePackageConfigHelpers)
+    configure_package_config_file(
+        ${CMAKE_CURRENT_SOURCE_DIR}/cmake/TinyProtoConfig.cmake.in
+        ${CMAKE_CURRENT_BINARY_DIR}/TinyProtoConfig.cmake
+        INSTALL_DESTINATION lib/cmake/tinyproto)
+
+    install(FILES
+        ${CMAKE_CURRENT_BINARY_DIR}/TinyProtoConfig.cmake
+        DESTINATION lib/cmake/tinyproto)
 
 else()
 
