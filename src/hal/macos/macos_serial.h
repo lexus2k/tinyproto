@@ -1,5 +1,5 @@
 /*
-    Copyright 2017-2024 (C) Alexey Dynda
+    Copyright 2017,2020,2022 (C) Alexey Dynda
 
     This file is part of Tiny Protocol Library.
 
@@ -26,28 +26,21 @@
     For further information contact via email on github account.
 */
 
-#include "tiny_serial.h"
+#pragma once
 
-#if defined(ARDUINO) || defined(__AVR__)
+#ifdef __cplusplus
+extern "C"
+{
+#endif
 
-#elif defined(__linux__)
+#include <stdint.h>
 
-#include "linux/linux_serial.inl"
+    /// Unique port handle
+    typedef int tiny_serial_handle_t;
 
-#elif defined(__APPLE__) && defined(__MACH__)
+/** Invalid serial handle definition */
+#define TINY_SERIAL_INVALID (-1)
 
-#include "macos/macos_serial.inl"
-
-#elif defined(_WIN32)
-
-#include "win32/win32_serial.inl"
-
-#elif defined(__XTENSA__)
-
-#include "esp32/esp32_serial.inl"
-
-#else
-
-#include "no_platform/noplatform_serial.inl"
-
+#ifdef __cplusplus
+}
 #endif

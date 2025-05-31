@@ -52,6 +52,8 @@ extern "C"
 #include "arduino/arduino_hal.h"
 #elif defined(__linux__)
 #include "linux/linux_hal.h"
+#elif defined(__APPLE__) && defined(__MACH__)
+#include "macos/macos_hal.h"
 #elif defined(__MINGW32__)
 #include "mingw32/mingw32_hal.h"
 #elif defined(_WIN32)

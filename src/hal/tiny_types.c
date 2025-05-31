@@ -41,6 +41,8 @@
 #include "arduino/arduino_hal.inl"
 #elif defined(__linux__)
 #include "linux/linux_hal.inl"
+#elif defined(__APPLE__) && defined(__MACH__)
+#include "macos/macos_hal.inl"
 #elif defined(__MINGW32__)
 #include "mingw32/mingw32_hal.inl"
 #elif defined(_WIN32)

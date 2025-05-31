@@ -83,6 +83,8 @@ public:
 
     void setRxCallback(void (*onRx)(Proto &, IPacket &));
 
+    void setTxCallback(void (*onTx)(Proto &, IPacket &));
+
 #if CONFIG_TINYHAL_THREAD_SUPPORT == 1
     void setTxDelay( uint32_t delay );
 
@@ -92,6 +94,7 @@ public:
 private:
     ILinkLayer *m_link = nullptr;
     void (*m_onRx)(Proto &, IPacket &) = nullptr;
+    void (*m_onTx)(Proto &, IPacket &) = nullptr;
     bool m_multithread = false;
     bool m_terminate = true;
     IPacket *m_pool = nullptr;

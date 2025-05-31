@@ -51,6 +51,8 @@ extern "C"
 #include "arduino/arduino_serial.h"
 #elif defined(__linux__)
 #include "linux/linux_serial.h"
+#elif defined(__APPLE__) && defined(__MACH__)
+#include "macos/macos_serial.h"
 #elif defined(_WIN32)
 #include "win32/win32_serial.h"
 #elif defined(__XTENSA__)

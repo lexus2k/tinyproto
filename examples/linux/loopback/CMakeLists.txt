@@ -18,6 +18,11 @@ if (NOT DEFINED COMPONENT_DIR)
         find_package(Threads REQUIRED)
         target_link_libraries(${PROJECT_NAME} Threads::Threads)
 #        target_link_libraries(tiny_loopback pthread)
+    elseif (APPLE)
+        target_link_libraries(tinyproto PRIVATE
+            "-framework IOKit"
+            "-framework CoreFoundation"
+        )
     endif()
 
 else()

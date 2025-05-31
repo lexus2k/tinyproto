@@ -16,8 +16,13 @@ if (NOT DEFINED COMPONENT_DIR)
     add_library(tinyproto STATIC ${HEADER_FILES} ${SOURCE_FILES})
     target_include_directories(tinyproto PUBLIC
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
-            $<INSTALL_INTERFACE:include>)
-
+            $<INSTALL_INTERFACE:include/tinyproto>)
+    if(APPLE)
+        target_link_libraries(tinyproto PRIVATE
+            "-framework IOKit"
+            "-framework CoreFoundation"
+        )
+    endif()
     if (EXAMPLES)
         add_subdirectory(examples/linux/loopback)
         add_subdirectory(examples/linux/hdlc_demo)

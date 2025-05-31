@@ -163,6 +163,8 @@ int main(int argc, char *argv[])
     tiny_serial_handle_t serial = tiny_serial_open("/dev/ttyS8", 115200);
 #elif defined(_WIN32)
     tiny_serial_handle_t serial = tiny_serial_open("COM8", 115200);
+#elif defined(__APPLE__) && defined(__MACH__)
+    tiny_serial_handle_t serial = tiny_serial_open("/dev/tty.usbmodem0", 115200);
 #endif
 
     if ( serial == TINY_SERIAL_INVALID )

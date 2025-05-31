@@ -260,6 +260,12 @@ void Proto::onRead(uint8_t addr, uint8_t *buf, int len)
 
 void Proto::onSend(uint8_t addr, const uint8_t *buf, int len)
 {
+    if ( m_onTx )
+    {
+        IPacket packet((char *)buf, len);
+        packet.m_len = len;
+        m_onTx(*this, packet);
+    }    
 }
 
 void Proto::onReadCb(void *udata, uint8_t addr, uint8_t *buf, int len)
@@ -337,6 +343,11 @@ void Proto::addRxPool(IPacket &message)
 void Proto::setRxCallback(void (*onRx)(Proto &, IPacket &))
 {
     m_onRx = onRx;
+}
+
+void Proto::setTxCallback(void (*onTx)(Proto &, IPacket &))
+{
+    m_onTx = onTx;
 }
 
 //////////// Platform specific helper classes

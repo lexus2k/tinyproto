@@ -1,5 +1,5 @@
 /*
-    Copyright 2017-2024 (C) Alexey Dynda
+    Copyright 2016-2024 (C) Alexey Dynda
 
     This file is part of Tiny Protocol Library.
 
@@ -26,28 +26,46 @@
     For further information contact via email on github account.
 */
 
-#include "tiny_serial.h"
+#pragma once
 
-#if defined(ARDUINO) || defined(__AVR__)
+#include <pthread.h>
+#include <unistd.h>
+#include <stdint.h>
+#include <time.h>
+#include <mach/mach_time.h>
 
-#elif defined(__linux__)
+#ifndef CONFIG_ENABLE_CHECKSUM
+#define CONFIG_ENABLE_CHECKSUM
+#endif
 
-#include "linux/linux_serial.inl"
+#ifndef CONFIG_ENABLE_FCS16
+#define CONFIG_ENABLE_FCS16
+#endif
 
-#elif defined(__APPLE__) && defined(__MACH__)
+#ifndef CONFIG_ENABLE_FCS32
+#define CONFIG_ENABLE_FCS32
+#endif
 
-#include "macos/macos_serial.inl"
+#define CONFIG_TINYHAL_THREAD_SUPPORT 1
 
-#elif defined(_WIN32)
+#ifndef DOXYGEN_SHOULD_SKIP_THIS
 
-#include "win32/win32_serial.inl"
+/**
+ * Mutex type used by Tiny Protocol implementation.
+ * The type declaration depends on platform.
+ */
+typedef pthread_mutex_t tiny_mutex_t;
 
-#elif defined(__XTENSA__)
-
-#include "esp32/esp32_serial.inl"
-
-#else
-
-#include "no_platform/noplatform_serial.inl"
+/**
+ * Events group type used by Tiny Protocol implementation.
+ * The type declaration depends on platform.
+ */
+typedef struct
+{
+    uint8_t bits;
+    uint16_t waiters;
+    pthread_mutex_t mutex;
+    pthread_cond_t cond;
+} tiny_events_t;
 
 #endif
