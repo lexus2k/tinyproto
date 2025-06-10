@@ -1,5 +1,8 @@
 cmake_minimum_required (VERSION 3.5)
 
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 option(EXAMPLES "Build examples and tiny_loopback" OFF)
 option(UNITTEST "Build unit tests" OFF)
 option(CUSTOM "Do not use built-in HAL, but use Custom instead" OFF)
