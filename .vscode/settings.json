@@ -1,0 +1,31 @@
+{
+    // ...existing settings...
+    "search.exclude": {
+        "**/build": true,
+        "**/out": true,
+        "**/*.log": true,
+        "lcov.info": true,
+        "**/*.csv": true
+    },
+    "files.associations": {
+        "functional": "c",
+        "__locale": "c",
+        "thread": "c",
+        "locale": "c",
+        "tiny_debug.h": "c",
+        "tiny_fd_service_queue_int.h": "c",
+        "tiny_fd_data_queue_int.h": "c",
+        "tiny_fd_frames_int.h": "c",
+        "tiny_fd_defines_int.h": "c",
+        "array": "cpp",
+        "string": "cpp",
+        "string_view": "cpp",
+        "vector": "cpp",
+        "tiny_fd.h": "c",
+        "bitset": "c",
+        "tiny_types.h": "c",
+        "tiny_fd_on_rx_int.h": "c",
+        "tiny_fd_int.h": "c",
+        "tiny_fd_frames_queue_int.h": "c"
+    }
+}

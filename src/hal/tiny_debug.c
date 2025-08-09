@@ -24,7 +24,6 @@
     accordance with the commercial license agreement provided in accordance with
     the terms contained in a written agreement between you and Alexey Dynda.
     For further information contact via email on github account.
-
 */
 
 #include "tiny_debug.h"
