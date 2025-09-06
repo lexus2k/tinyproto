@@ -82,7 +82,7 @@ OBJ_LIB += \
         src/proto/fd/tiny_fd_peers.o \
         src/proto/fd/tiny_fd_proto_logger.o \
         src/proto/fd/tiny_fd_frames_queue.o \
-        src/proto/fd/tiny_fd_data_queue.o \
+        src/proto/fd/tiny_fd_i_queue_control.o \
         src/proto/fd/tiny_fd_service_queue.o \
         src/proto/fd/tiny_fd_tx.o \
         src/hal/tiny_list.o \

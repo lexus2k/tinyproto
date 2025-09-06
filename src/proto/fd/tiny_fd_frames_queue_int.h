@@ -48,6 +48,16 @@ extern "C"
         int mtu;                        ///< Maximum supported payload size
     } tiny_fd_queue_t;
 
+    typedef struct
+    {
+        /// Storage for all I- frames
+        tiny_fd_queue_t i_queue;
+        /// Storage for all S- and U- service frames
+        tiny_fd_queue_t s_queue;
+        /// Global mutex
+        tiny_mutex_t mutex;
+
+    } tiny_frames_queue_t;
 
     /**
      * Initializes the queue, and returns number of bytes allocated in the provided buffer

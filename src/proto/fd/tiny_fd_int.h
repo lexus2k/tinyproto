@@ -41,6 +41,7 @@ extern "C"
 #include "proto/hdlc/low_level/hdlc.h"
 #include "proto/hdlc/low_level/hdlc_int.h"
 #include "hal/tiny_types.h"
+#include "tiny_fd_i_queue_control_int.h"
 #include "tiny_fd_frames_queue_int.h"
 
 #define FD_PEER_BUF_SIZE() ( sizeof(tiny_fd_peer_info_t) )
@@ -88,7 +89,8 @@ extern "C"
         uint8_t sent_reject; // If reject was already sent
         uint8_t next_ns;     // next frame to be sent
         uint8_t confirm_ns;  // next frame to be confirmed
-        uint8_t last_ns;     // next free frame in cycle buffer
+
+        i_queue_control_t i_queue_control;
 
         uint32_t last_sent_i_ts;           // last sent I-frame timestamp
         uint32_t last_sent_frame_ts;       // last sent keep alive timestamp
@@ -99,17 +101,6 @@ extern "C"
         tiny_events_t events;
 
     } tiny_fd_peer_info_t;
-
-    typedef struct
-    {
-        /// Storage for all I- frames
-        tiny_fd_queue_t i_queue;
-        /// Storage for all S- and U- service frames
-        tiny_fd_queue_t s_queue;
-        /// Global mutex
-        tiny_mutex_t mutex;
-
-    } tiny_frames_queue_t;
 
     typedef struct tiny_fd_data_t
     {

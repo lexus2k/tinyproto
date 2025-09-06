@@ -26,7 +26,7 @@
     For further information contact via email on github account.
 */
 
-#include "tiny_fd_data_queue_int.h"
+#include "tiny_fd_i_queue_control_int.h"
 
 #include "tiny_fd.h"
 #include "tiny_fd_int.h"
@@ -35,9 +35,30 @@
 
 ///////////////////////////////////////////////////////////////////////////////
 
+bool __has_unconfirmed_frames(tiny_fd_handle_t handle, uint8_t peer)
+{
+    return (handle->peers[peer].confirm_ns != handle->peers[peer].i_queue_control.last_ns);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+bool __all_frames_are_sent(tiny_fd_handle_t handle, uint8_t peer)
+{
+    return (handle->peers[peer].i_queue_control.last_ns == handle->peers[peer].next_ns);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+uint32_t __time_passed_since_last_sent_i_frame(tiny_fd_handle_t handle, uint8_t peer)
+{
+    return (uint32_t)(tiny_millis() - handle->peers[peer].last_sent_i_ts);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
 bool __can_accept_i_frames(tiny_fd_handle_t handle, uint8_t peer)
 {
-    uint8_t next_last_ns = (handle->peers[peer].last_ns + 1) & seq_bits_mask;
+    uint8_t next_last_ns = (handle->peers[peer].i_queue_control.last_ns + 1) & seq_bits_mask;
     bool can_accept = next_last_ns != handle->peers[peer].confirm_ns;
     return can_accept;
 }
@@ -52,12 +73,38 @@ bool __put_i_frame_to_tx_queue(tiny_fd_handle_t handle, uint8_t peer, const void
     {
         LOG(TINY_LOG_DEB, "[%p] QUEUE I-PUT: [%02X] [%02X]\n", handle, slot->header.address, slot->header.control);
         slot->header.address = __peer_to_address_field( handle, peer );
-        slot->header.control = handle->peers[peer].last_ns << 1;
-        handle->peers[peer].last_ns = (handle->peers[peer].last_ns + 1) & seq_bits_mask;
+        slot->header.control = handle->peers[peer].i_queue_control.last_ns << 1;
+        handle->peers[peer].i_queue_control.last_ns = (handle->peers[peer].i_queue_control.last_ns + 1) & seq_bits_mask;
         tiny_events_set(&handle->events, FD_EVENT_TX_DATA_AVAILABLE);
         return true;
     }
     return false;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+void __reset_i_queue_control(tiny_fd_handle_t handle, uint8_t peer)
+{
+    handle->peers[peer].confirm_ns = 0;
+    handle->peers[peer].i_queue_control.last_ns = 0;
+    handle->peers[peer].next_ns = 0;
+    tiny_fd_queue_reset_for( &handle->frames.i_queue, __peer_to_address_field( handle, peer ) );
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+void __log_i_queue_control_statistics(tiny_fd_handle_t handle, uint8_t peer, uint8_t is_full)
+{
+    if (is_full)
+    {
+        LOG(TINY_LOG_WRN, "[%p] I_QUEUE is full N(S-free)queue=%d, N(S-awaiting confirm)confirm=%d, N(S-to send)next=%d\n", handle,
+        handle->peers[peer].i_queue_control.last_ns, handle->peers[peer].confirm_ns, handle->peers[peer].next_ns);
+    }
+    else
+    {
+    LOG(TINY_LOG_INFO, "[%p] I_QUEUE is N(S)queue=%d, N(S)confirm=%d, N(S)next=%d\n", handle,
+        handle->peers[peer].i_queue_control.last_ns, handle->peers[peer].confirm_ns, handle->peers[peer].next_ns);
+    }
 }
 
 ///////////////////////////////////////////////////////////////////////////////

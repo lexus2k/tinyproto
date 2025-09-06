@@ -29,30 +29,26 @@
 #pragma once
 
 #include "tiny_fd.h"
-#include "tiny_fd_int.h"
 #include "tiny_fd_defines_int.h"
-#include "tiny_fd_peers_int.h"
+
+#include <stdbool.h>
+
+typedef struct i_queue_control_t
+{
+    uint8_t last_ns;     // next free frame in cycle buffer
+} i_queue_control_t;
 
 ///////////////////////////////////////////////////////////////////////////////
 
-static inline bool __has_unconfirmed_frames(tiny_fd_handle_t handle, uint8_t peer)
-{
-    return (handle->peers[peer].confirm_ns != handle->peers[peer].last_ns);
-}
+bool __has_unconfirmed_frames(tiny_fd_handle_t handle, uint8_t peer);
 
 ///////////////////////////////////////////////////////////////////////////////
 
-static inline bool __all_frames_are_sent(tiny_fd_handle_t handle, uint8_t peer)
-{
-    return (handle->peers[peer].last_ns == handle->peers[peer].next_ns);
-}
+bool __all_frames_are_sent(tiny_fd_handle_t handle, uint8_t peer);
 
 ///////////////////////////////////////////////////////////////////////////////
 
-static inline uint32_t __time_passed_since_last_sent_i_frame(tiny_fd_handle_t handle, uint8_t peer)
-{
-    return (uint32_t)(tiny_millis() - handle->peers[peer].last_sent_i_ts);
-}
+uint32_t __time_passed_since_last_sent_i_frame(tiny_fd_handle_t handle, uint8_t peer);
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -61,5 +57,13 @@ bool __can_accept_i_frames(tiny_fd_handle_t handle, uint8_t peer);
 ///////////////////////////////////////////////////////////////////////////////
 
 bool __put_i_frame_to_tx_queue(tiny_fd_handle_t handle, uint8_t peer, const void *data, int len);
+
+///////////////////////////////////////////////////////////////////////////////
+
+void __reset_i_queue_control(tiny_fd_handle_t handle, uint8_t peer);
+
+///////////////////////////////////////////////////////////////////////////////
+
+void __log_i_queue_control_statistics(tiny_fd_handle_t handle, uint8_t peer, uint8_t is_full);
 
 ///////////////////////////////////////////////////////////////////////////////

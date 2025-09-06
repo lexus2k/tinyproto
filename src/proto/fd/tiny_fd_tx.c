@@ -30,7 +30,7 @@
 #include "tiny_fd.h"
 #include "tiny_fd_int.h"
 #include "hal/tiny_debug.h"
-#include "tiny_fd_data_queue_int.h"
+#include "tiny_fd_i_queue_control_int.h"
 #include "tiny_fd_defines_int.h"
 #include "tiny_fd_peers_int.h"
 #include "tiny_fd_service_queue_int.h"
@@ -46,7 +46,7 @@ void __confirm_sent_frames(tiny_fd_handle_t handle, uint8_t peer, uint8_t nr)
     {
         // if we reached the last sent frame index, but we have something to confirm
         // it means that remote side is out of sync.
-        if ( handle->peers[peer].confirm_ns == handle->peers[peer].last_ns )
+        if ( !__has_unconfirmed_frames(handle, peer) )
         {
             // TODO: Out of sync
             // No solution for this part yet.

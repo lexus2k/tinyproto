@@ -31,7 +31,7 @@
 #include "tiny_fd_defines_int.h"
 #include "tiny_fd_peers_int.h"
 #include "tiny_fd_service_queue_int.h"
-#include "tiny_fd_data_queue_int.h"
+#include "tiny_fd_i_queue_control_int.h"
 #include "tiny_fd_on_rx_int.h"
 #include "hal/tiny_types.h"
 #include "hal/tiny_debug.h"
@@ -44,15 +44,6 @@ static void on_frame_send(void *user_data, const uint8_t *data, int len);
 
 ///////////////////////////////////////////////////////////////////////////////
 // Helper functions
-///////////////////////////////////////////////////////////////////////////////
-
-#if 0
-static inline uint8_t __number_of_awaiting_tx_i_frames(tiny_fd_handle_t handle, uint8_t peer)
-{
-    return ((uint8_t)(handle->peers[peer].last_ns - handle->peers[peer].confirm_ns) & seq_bits_mask);
-}
-#endif
-
 ///////////////////////////////////////////////////////////////////////////////
 
 static inline uint32_t __time_passed_since_last_frame_received(tiny_fd_handle_t handle, uint8_t peer)
@@ -81,8 +72,8 @@ static void __switch_to_connected_state(tiny_fd_handle_t handle, uint8_t peer)
     if ( handle->peers[peer].state != TINY_FD_STATE_CONNECTED )
     {
         handle->peers[peer].state = TINY_FD_STATE_CONNECTED;
+        __reset_i_queue_control(handle, peer);
         handle->peers[peer].confirm_ns = 0;
-        handle->peers[peer].last_ns = 0;
         handle->peers[peer].next_ns = 0;
         handle->peers[peer].next_nr = 0;
         handle->peers[peer].sent_nr = 0;
@@ -116,8 +107,8 @@ static void __switch_to_disconnected_state(tiny_fd_handle_t handle, uint8_t peer
     if ( handle->peers[peer].state != TINY_FD_STATE_DISCONNECTED )
     {
         handle->peers[peer].state = TINY_FD_STATE_DISCONNECTED;
+        __reset_i_queue_control(handle, peer);
         handle->peers[peer].confirm_ns = 0;
-        handle->peers[peer].last_ns = 0;
         handle->peers[peer].next_ns = 0;
         handle->peers[peer].next_nr = 0;
         handle->peers[peer].sent_nr = 0;
@@ -289,6 +280,12 @@ static int __tiny_fd_init_validate(tiny_fd_handle_t *handle, tiny_fd_init_t *ini
     if ( init->window_frames < 2 )
     {
         LOG(TINY_LOG_CRIT, "HDLC doesn't support less than 2-frames queue%s", "\n");
+        return TINY_ERR_INVALID_DATA;
+    }
+    if ( init->window_frames > seq_bits_mask )  // ADD THIS CHECK
+    {
+        LOG(TINY_LOG_CRIT, "Window size %d exceeds sequence space %d\n", 
+            init->window_frames, seq_bits_mask + 1);
         return TINY_ERR_INVALID_DATA;
     }
     if ( !init->retry_timeout && !init->send_timeout )
@@ -786,14 +783,12 @@ int tiny_fd_send_packet_to(tiny_fd_handle_t handle, uint8_t address, const void 
             {
                 if ( tiny_fd_queue_has_free_slots( &handle->frames.i_queue ) )
                 {
-                    LOG(TINY_LOG_INFO, "[%p] I_QUEUE is N(S)queue=%d, N(S)confirm=%d, N(S)next=%d\n", handle,
-                        handle->peers[peer].last_ns, handle->peers[peer].confirm_ns, handle->peers[peer].next_ns);
+                    __log_i_queue_control_statistics(handle, peer, 0);
                     tiny_events_set(&handle->events, FD_EVENT_QUEUE_HAS_FREE_SLOTS);
                 }
                 else
                 {
-                    LOG(TINY_LOG_WRN, "[%p] I_QUEUE is full N(S-free)queue=%d, N(S-awaiting confirm)confirm=%d, N(S-to send)next=%d\n", handle,
-                        handle->peers[peer].last_ns, handle->peers[peer].confirm_ns, handle->peers[peer].next_ns);
+                    __log_i_queue_control_statistics(handle, peer, 1);
                 }
                 result = TINY_SUCCESS;
             }

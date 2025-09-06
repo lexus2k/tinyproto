@@ -313,11 +313,13 @@ static void on_frame_read(void *user_data, uint8_t *data, int len)
 
 int hdlc_run_rx(hdlc_handle_t handle, const void *data, int len, int *error)
 {
-    if (!handle || !data || !error) // fix: guard
+    if (!handle || !data)
         return TINY_ERR_INVALID_DATA;
     if (len < 0) // fix: negative length check
     {
-        *error = TINY_ERR_INVALID_DATA;
+        if (error) {
+            *error = TINY_ERR_INVALID_DATA;
+        }
         return 0;
     }
     return hdlc_ll_run_rx(handle->handle, data, len, error);

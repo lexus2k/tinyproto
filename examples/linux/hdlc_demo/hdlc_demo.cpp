@@ -127,7 +127,7 @@ static void protocol_thread(tiny_serial_handle_t serial)
             tx_pos = 0;
             tx_len = hdlc_get_tx_data(handle, tx, sizeof(tx));
         }
-        if ( tx_len )
+        if ( tx_len >= 0 )
         {
             int result = tiny_serial_send_timeout(serial, tx + tx_pos, tx_len, 1);
             if ( result < 0 )

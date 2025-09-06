@@ -31,7 +31,7 @@
 #include "tiny_fd.h"
 #include "tiny_fd_int.h"
 #include "tiny_fd_tx_int.h"
-#include "tiny_fd_data_queue_int.h"
+#include "tiny_fd_i_queue_control_int.h"
 #include "tiny_fd_defines_int.h"
 #include "tiny_fd_peers_int.h"
 #include "tiny_fd_service_queue_int.h"
@@ -135,7 +135,7 @@ static int __on_s_frame_read(tiny_fd_handle_t handle, uint8_t peer, void *data, 
         if ( address & HDLC_CR_BIT )
         {
             // Send answer if we don't have frames to send
-            if ( handle->peers[peer].next_ns == handle->peers[peer].last_ns )
+            if ( __all_frames_are_sent(handle, peer) )
             {
                 tiny_frame_header_t frame = {
                     .address = __peer_to_address_field( handle, peer ),
