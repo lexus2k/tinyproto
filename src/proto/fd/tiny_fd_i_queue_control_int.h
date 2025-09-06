@@ -36,7 +36,16 @@
 typedef struct i_queue_control_t
 {
     uint8_t last_ns;     // next free frame in cycle buffer
+    uint8_t confirm_ns;  // next sent frame to be confirmed
 } i_queue_control_t;
+
+///////////////////////////////////////////////////////////////////////////////
+
+uint8_t __get_next_frame_to_confirm(tiny_fd_handle_t handle, uint8_t peer);
+
+///////////////////////////////////////////////////////////////////////////////
+
+void __confirm_one_frame(tiny_fd_handle_t handle, uint8_t peer);
 
 ///////////////////////////////////////////////////////////////////////////////
 

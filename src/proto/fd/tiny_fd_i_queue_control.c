@@ -35,9 +35,24 @@
 
 ///////////////////////////////////////////////////////////////////////////////
 
+uint8_t __get_next_frame_to_confirm(tiny_fd_handle_t handle, uint8_t peer)
+{
+    return handle->peers[peer].i_queue_control.confirm_ns;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+void __confirm_one_frame(tiny_fd_handle_t handle, uint8_t peer)
+{
+    handle->peers[peer].i_queue_control.confirm_ns = (handle->peers[peer].i_queue_control.confirm_ns + 1) & seq_bits_mask;
+}
+
+
+///////////////////////////////////////////////////////////////////////////////
+
 bool __has_unconfirmed_frames(tiny_fd_handle_t handle, uint8_t peer)
 {
-    return (handle->peers[peer].confirm_ns != handle->peers[peer].i_queue_control.last_ns);
+    return (handle->peers[peer].i_queue_control.confirm_ns != handle->peers[peer].i_queue_control.last_ns);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -59,7 +74,7 @@ uint32_t __time_passed_since_last_sent_i_frame(tiny_fd_handle_t handle, uint8_t 
 bool __can_accept_i_frames(tiny_fd_handle_t handle, uint8_t peer)
 {
     uint8_t next_last_ns = (handle->peers[peer].i_queue_control.last_ns + 1) & seq_bits_mask;
-    bool can_accept = next_last_ns != handle->peers[peer].confirm_ns;
+    bool can_accept = next_last_ns != handle->peers[peer].i_queue_control.confirm_ns;
     return can_accept;
 }
 
@@ -85,7 +100,7 @@ bool __put_i_frame_to_tx_queue(tiny_fd_handle_t handle, uint8_t peer, const void
 
 void __reset_i_queue_control(tiny_fd_handle_t handle, uint8_t peer)
 {
-    handle->peers[peer].confirm_ns = 0;
+    handle->peers[peer].i_queue_control.confirm_ns = 0;
     handle->peers[peer].i_queue_control.last_ns = 0;
     handle->peers[peer].next_ns = 0;
     tiny_fd_queue_reset_for( &handle->frames.i_queue, __peer_to_address_field( handle, peer ) );

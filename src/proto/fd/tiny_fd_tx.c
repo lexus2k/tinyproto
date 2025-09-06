@@ -42,7 +42,7 @@
 void __confirm_sent_frames(tiny_fd_handle_t handle, uint8_t peer, uint8_t nr)
 {
     // Repeat the loop for all frames that are not confirmed yet till we reach N(r)
-    while ( nr != handle->peers[peer].confirm_ns )
+    while ( nr != __get_next_frame_to_confirm( handle, peer ) )
     {
         // if we reached the last sent frame index, but we have something to confirm
         // it means that remote side is out of sync.
@@ -54,9 +54,8 @@ void __confirm_sent_frames(tiny_fd_handle_t handle, uint8_t peer, uint8_t nr)
             break;
         }
         uint8_t address = __peer_to_address_field( handle, peer );
-        // LOG("[%p] Confirming sent frames %d\n", handle, handle->peers[peer].confirm_ns);
         // Call on_send_cb to inform application that frame was sent
-        tiny_fd_frame_info_t *slot = tiny_fd_queue_get_next( &handle->frames.i_queue, TINY_FD_QUEUE_I_FRAME, address, handle->peers[peer].confirm_ns );
+        tiny_fd_frame_info_t *slot = tiny_fd_queue_get_next( &handle->frames.i_queue, TINY_FD_QUEUE_I_FRAME, address, __get_next_frame_to_confirm( handle, peer ) );
         if ( slot != NULL )
         {
             if ( handle->on_send_cb )
@@ -78,9 +77,9 @@ void __confirm_sent_frames(tiny_fd_handle_t handle, uint8_t peer, uint8_t nr)
         {
             // This should never happen !!!
             // TODO: Add error processing
-            LOG(TINY_LOG_ERR, "[%p] The frame cannot be confirmed: %02X\n", handle, handle->peers[peer].confirm_ns);
+            LOG(TINY_LOG_ERR, "[%p] The frame cannot be confirmed: %02X\n", handle, __get_next_frame_to_confirm( handle, peer ));
         }
-        handle->peers[peer].confirm_ns = (handle->peers[peer].confirm_ns + 1) & seq_bits_mask;
+        __confirm_one_frame(handle, peer);
         handle->peers[peer].retries = handle->retries;
     }
     // Check if we can accept new frames from the application.
@@ -89,8 +88,7 @@ void __confirm_sent_frames(tiny_fd_handle_t handle, uint8_t peer, uint8_t nr)
         // Unblock specific peer to accept new frames for sending
         tiny_events_set(&handle->peers[peer].events, FD_EVENT_CAN_ACCEPT_I_FRAMES);
     }
-    LOG(TINY_LOG_DEB, "[%p] Last confirmed frame: %02X\n", handle, handle->peers[peer].confirm_ns);
-    // LOG("[%p] N(S)=%d, N(R)=%d\n", handle, handle->peers[peer].confirm_ns, handle->peers[peer].next_nr);
+    LOG(TINY_LOG_DEB, "[%p] Last confirmed frame: %02X\n", handle, __get_next_frame_to_confirm( handle, peer ));
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -100,7 +98,7 @@ void __resend_all_unconfirmed_frames(tiny_fd_handle_t handle, uint8_t peer, uint
     // First, we need to check if that is possible. Maybe remote side is not in sync
     while ( handle->peers[peer].next_ns != nr )
     {
-        if ( handle->peers[peer].confirm_ns == handle->peers[peer].next_ns )
+        if ( __get_next_frame_to_confirm( handle, peer ) == handle->peers[peer].next_ns )
         {
             // consider here that remote side is not in sync, we cannot perform request
             LOG(TINY_LOG_CRIT, "[%p] Remote side not in sync\n", handle);

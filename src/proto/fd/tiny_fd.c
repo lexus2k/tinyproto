@@ -73,7 +73,6 @@ static void __switch_to_connected_state(tiny_fd_handle_t handle, uint8_t peer)
     {
         handle->peers[peer].state = TINY_FD_STATE_CONNECTED;
         __reset_i_queue_control(handle, peer);
-        handle->peers[peer].confirm_ns = 0;
         handle->peers[peer].next_ns = 0;
         handle->peers[peer].next_nr = 0;
         handle->peers[peer].sent_nr = 0;
@@ -108,7 +107,6 @@ static void __switch_to_disconnected_state(tiny_fd_handle_t handle, uint8_t peer
     {
         handle->peers[peer].state = TINY_FD_STATE_DISCONNECTED;
         __reset_i_queue_control(handle, peer);
-        handle->peers[peer].confirm_ns = 0;
         handle->peers[peer].next_ns = 0;
         handle->peers[peer].next_nr = 0;
         handle->peers[peer].sent_nr = 0;
@@ -558,8 +556,7 @@ static void tiny_fd_connected_check_idle_timeout(tiny_fd_handle_t handle, uint8_
                 " ms))\n",
                 handle, handle->peers[peer].last_sent_i_ts, tiny_millis(), handle->retry_timeout);
             handle->peers[peer].retries--;
-            // Do not use mutex for confirm_ns value as it is byte-value
-            __resend_all_unconfirmed_frames(handle, peer, 0, handle->peers[peer].confirm_ns);
+            __resend_all_unconfirmed_frames(handle, peer, 0, __get_next_frame_to_confirm( handle, peer ));
         }
         else
         {
