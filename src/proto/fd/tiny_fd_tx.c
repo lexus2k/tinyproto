@@ -42,11 +42,11 @@
 void __confirm_sent_frames(tiny_fd_handle_t handle, uint8_t peer, uint8_t nr)
 {
     // Repeat the loop for all frames that are not confirmed yet till we reach N(r)
-    while ( nr != __get_next_frame_to_confirm( handle, peer ) )
+    while ( nr != handle->peers[peer].i_queue_control.tx_state.confirm_ns )
     {
         // if we reached the last sent frame index, but we have something to confirm
         // it means that remote side is out of sync.
-        if ( !__has_unconfirmed_frames(handle, peer) )
+        if ( !((handle->peers[peer].i_queue_control.tx_state.confirm_ns != handle->peers[peer].i_queue_control.tx_state.last_ns)))
         {
             // TODO: Out of sync
             // No solution for this part yet.
@@ -55,7 +55,7 @@ void __confirm_sent_frames(tiny_fd_handle_t handle, uint8_t peer, uint8_t nr)
         }
         uint8_t address = __peer_to_address_field( handle, peer );
         // Call on_send_cb to inform application that frame was sent
-        tiny_fd_frame_info_t *slot = tiny_fd_queue_get_next( &handle->frames.i_queue, TINY_FD_QUEUE_I_FRAME, address, __get_next_frame_to_confirm( handle, peer ) );
+        tiny_fd_frame_info_t *slot = tiny_fd_queue_get_next( &handle->frames.i_queue, TINY_FD_QUEUE_I_FRAME, address, handle->peers[peer].i_queue_control.tx_state.confirm_ns );
         if ( slot != NULL )
         {
             if ( handle->on_send_cb )
@@ -77,18 +77,18 @@ void __confirm_sent_frames(tiny_fd_handle_t handle, uint8_t peer, uint8_t nr)
         {
             // This should never happen !!!
             // TODO: Add error processing
-            LOG(TINY_LOG_ERR, "[%p] The frame cannot be confirmed: %02X\n", handle, __get_next_frame_to_confirm( handle, peer ));
+            LOG(TINY_LOG_ERR, "[%p] The frame cannot be confirmed: %02X\n", handle, handle->peers[peer].i_queue_control.tx_state.confirm_ns);
         }
-        __confirm_one_frame(handle, peer);
+        handle->peers[peer].i_queue_control.tx_state.confirm_ns = (handle->peers[peer].i_queue_control.tx_state.confirm_ns + 1) & seq_bits_mask;
         handle->peers[peer].retries = handle->retries;
     }
     // Check if we can accept new frames from the application.
-    if ( __can_accept_i_frames( handle, peer ) )
+    if ( __can_accept_i_frames( &handle->peers[peer].i_queue_control ) )
     {
         // Unblock specific peer to accept new frames for sending
         tiny_events_set(&handle->peers[peer].events, FD_EVENT_CAN_ACCEPT_I_FRAMES);
     }
-    LOG(TINY_LOG_DEB, "[%p] Last confirmed frame: %02X\n", handle, __get_next_frame_to_confirm( handle, peer ));
+    LOG(TINY_LOG_DEB, "[%p] Last confirmed frame: %02X\n", handle, handle->peers[peer].i_queue_control.tx_state.confirm_ns);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -96,9 +96,9 @@ void __confirm_sent_frames(tiny_fd_handle_t handle, uint8_t peer, uint8_t nr)
 void __resend_all_unconfirmed_frames(tiny_fd_handle_t handle, uint8_t peer, uint8_t control, uint8_t nr)
 {
     // First, we need to check if that is possible. Maybe remote side is not in sync
-    while ( handle->peers[peer].next_ns != nr )
+    while ( handle->peers[peer].i_queue_control.tx_state.next_ns != nr )
     {
-        if ( __get_next_frame_to_confirm( handle, peer ) == handle->peers[peer].next_ns )
+        if ( handle->peers[peer].i_queue_control.tx_state.confirm_ns == handle->peers[peer].i_queue_control.tx_state.next_ns )
         {
             // consider here that remote side is not in sync, we cannot perform request
             LOG(TINY_LOG_CRIT, "[%p] Remote side not in sync\n", handle);
@@ -106,15 +106,15 @@ void __resend_all_unconfirmed_frames(tiny_fd_handle_t handle, uint8_t peer, uint
                 .header.address = __peer_to_address_field( handle, peer ) | HDLC_CR_BIT,
                 .header.control = HDLC_U_FRAME_TYPE_FRMR | HDLC_U_FRAME_BITS,
                 .data1 = control,
-                .data2 = (handle->peers[peer].next_nr << 5) | (handle->peers[peer].next_ns << 1),
+                .data2 = (handle->peers[peer].next_nr << 5) | (handle->peers[peer].i_queue_control.tx_state.next_ns << 1),
             };
             // Send 2-byte header + 2 extra bytes
             __put_u_s_frame_to_tx_queue(handle, TINY_FD_QUEUE_U_FRAME, &frame, 4);
             break;
         }
-        handle->peers[peer].next_ns = (handle->peers[peer].next_ns - 1) & seq_bits_mask;
+        handle->peers[peer].i_queue_control.tx_state.next_ns = (handle->peers[peer].i_queue_control.tx_state.next_ns - 1) & seq_bits_mask;
     }
-    LOG(TINY_LOG_DEB, "[%p] N(s) is set to %02X\n", handle, handle->peers[peer].next_ns);
+    LOG(TINY_LOG_DEB, "[%p] N(s) is set to %02X\n", handle, handle->peers[peer].i_queue_control.tx_state.next_ns);
     tiny_events_set(&handle->events, FD_EVENT_TX_DATA_AVAILABLE);
 }
 

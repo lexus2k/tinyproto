@@ -87,8 +87,6 @@ extern "C"
         uint8_t next_nr;     // frame waiting to receive
         uint8_t sent_nr;     // frame index last sent back
         uint8_t sent_reject; // If reject was already sent
-        uint8_t next_ns;     // next frame to be sent
-        uint8_t confirm_ns;  // next frame to be confirmed
 
         i_queue_control_t i_queue_control;
 

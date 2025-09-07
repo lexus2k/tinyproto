@@ -73,7 +73,6 @@ static void __switch_to_connected_state(tiny_fd_handle_t handle, uint8_t peer)
     {
         handle->peers[peer].state = TINY_FD_STATE_CONNECTED;
         __reset_i_queue_control(handle, peer);
-        handle->peers[peer].next_ns = 0;
         handle->peers[peer].next_nr = 0;
         handle->peers[peer].sent_nr = 0;
         handle->peers[peer].sent_reject = 0;
@@ -107,7 +106,6 @@ static void __switch_to_disconnected_state(tiny_fd_handle_t handle, uint8_t peer
     {
         handle->peers[peer].state = TINY_FD_STATE_DISCONNECTED;
         __reset_i_queue_control(handle, peer);
-        handle->peers[peer].next_ns = 0;
         handle->peers[peer].next_nr = 0;
         handle->peers[peer].sent_nr = 0;
         handle->peers[peer].sent_reject = 0;
@@ -474,17 +472,16 @@ static uint8_t *tiny_fd_get_next_i_frame(tiny_fd_handle_t handle, int *len, uint
         // If sending of I-frames is not allowed then just exit
         return NULL;
     }
-    ptr = tiny_fd_queue_get_next( &handle->frames.i_queue, TINY_FD_QUEUE_I_FRAME, address, handle->peers[peer].next_ns );
+    ptr = tiny_fd_queue_get_next( &handle->frames.i_queue, TINY_FD_QUEUE_I_FRAME, address, __i_queue_control_get_next_frame_to_send(handle, peer) );
     if ( ptr != NULL )
     {
         data = (uint8_t *)&ptr->header;
         *len = ptr->len + sizeof(tiny_frame_header_t);
         LOG(TINY_LOG_INFO, "[%p] Sending I-Frame N(R-awaiting)=%02X,N(S-seq sent)=%02X with address [%02X] to %s\n", handle, handle->peers[peer].next_nr,
-            handle->peers[peer].next_ns, data[0], __is_primary_station( handle ) ? "secondary" : "primary" );
+            __i_queue_control_get_next_frame_to_send(handle, peer), data[0], __is_primary_station( handle ) ? "secondary" : "primary" );
         ptr->header.control &= 0x0F;
         ptr->header.control |= (handle->peers[peer].next_nr << 5);
-        handle->peers[peer].next_ns++;
-        handle->peers[peer].next_ns &= seq_bits_mask;
+        __i_queue_control_move_to_next_ns(handle, peer);
         // Move to different place
         handle->peers[peer].sent_nr = handle->peers[peer].next_nr;
         handle->peers[peer].last_sent_i_ts = tiny_millis();
@@ -545,7 +542,7 @@ static void tiny_fd_connected_check_idle_timeout(tiny_fd_handle_t handle, uint8_
 {
     tiny_mutex_lock(&handle->frames.mutex);
     // If all I-frames are sent and no respond from the remote side
-    if ( __has_unconfirmed_frames(handle, peer) && __all_frames_are_sent(handle, peer) &&
+    if ( __i_queue_control_has_unconfirmed_frames(&handle->peers[peer].i_queue_control) && __all_frames_are_sent(handle, peer) &&
          __time_passed_since_last_sent_i_frame(handle, peer) >= handle->retry_timeout )
     {
         // if sent frame was not confirmed due to noisy line
@@ -556,7 +553,7 @@ static void tiny_fd_connected_check_idle_timeout(tiny_fd_handle_t handle, uint8_
                 " ms))\n",
                 handle, handle->peers[peer].last_sent_i_ts, tiny_millis(), handle->retry_timeout);
             handle->peers[peer].retries--;
-            __resend_all_unconfirmed_frames(handle, peer, 0, __get_next_frame_to_confirm( handle, peer ));
+            __resend_all_unconfirmed_frames(handle, peer, 0, __i_queue_control_get_next_frame_to_confirm( &handle->peers[peer].i_queue_control ));
         }
         else
         {
@@ -780,12 +777,12 @@ int tiny_fd_send_packet_to(tiny_fd_handle_t handle, uint8_t address, const void 
             {
                 if ( tiny_fd_queue_has_free_slots( &handle->frames.i_queue ) )
                 {
-                    __log_i_queue_control_statistics(handle, peer, 0);
+                    __i_queue_control_log_statistics(handle, peer, 0);
                     tiny_events_set(&handle->events, FD_EVENT_QUEUE_HAS_FREE_SLOTS);
                 }
                 else
                 {
-                    __log_i_queue_control_statistics(handle, peer, 1);
+                    __i_queue_control_log_statistics(handle, peer, 1);
                 }
                 result = TINY_SUCCESS;
             }
@@ -795,7 +792,7 @@ int tiny_fd_send_packet_to(tiny_fd_handle_t handle, uint8_t address, const void 
                 // !!!! If this log appears, then in the code of the protocol something is definitely wrong !!!!
                 LOG(TINY_LOG_ERR, "[%p] Wrong flag FD_EVENT_QUEUE_HAS_FREE_SLOTS\n", handle);
             }
-            if ( __can_accept_i_frames( handle, peer ) )
+            if ( __can_accept_i_frames( &handle->peers[peer].i_queue_control ) )
             {
                 tiny_events_set(&handle->peers[peer].events, FD_EVENT_CAN_ACCEPT_I_FRAMES);
             }

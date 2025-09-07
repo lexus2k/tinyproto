@@ -33,23 +33,46 @@
 
 #include <stdbool.h>
 
+typedef struct i_queue_control_send_t
+{
+    uint8_t last_ns;     // next free frame to send in cycle buffer
+    uint8_t confirm_ns;  // next sent frame to be confirmed
+    uint8_t next_ns;     // next frame to be sent
+} i_queue_control_send_t;
+
 typedef struct i_queue_control_t
 {
-    uint8_t last_ns;     // next free frame in cycle buffer
-    uint8_t confirm_ns;  // next sent frame to be confirmed
+    struct i_queue_control_send_t tx_state;
 } i_queue_control_t;
 
 ///////////////////////////////////////////////////////////////////////////////
 
-uint8_t __get_next_frame_to_confirm(tiny_fd_handle_t handle, uint8_t peer);
+static inline uint8_t __i_queue_control_get_next_frame_to_confirm(i_queue_control_t *control)
+{
+    return control->tx_state.confirm_ns;
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 
-void __confirm_one_frame(tiny_fd_handle_t handle, uint8_t peer);
+typedef bool (*on_frame_confirmed_cb_t)(void *ctx, uint8_t nr);
+
+bool __i_queue_control_confirm_sent_frames(i_queue_control_t *control, uint8_t nr, on_frame_confirmed_cb_t cb, void *ctx);
 
 ///////////////////////////////////////////////////////////////////////////////
 
-bool __has_unconfirmed_frames(tiny_fd_handle_t handle, uint8_t peer);
+uint8_t __i_queue_control_get_next_frame_to_send(tiny_fd_handle_t handle, uint8_t peer);
+
+///////////////////////////////////////////////////////////////////////////////
+
+void __i_queue_control_move_to_previous_ns(tiny_fd_handle_t handle, uint8_t peer);
+
+///////////////////////////////////////////////////////////////////////////////
+
+void __i_queue_control_move_to_next_ns(tiny_fd_handle_t handle, uint8_t peer);
+
+///////////////////////////////////////////////////////////////////////////////
+
+bool __i_queue_control_has_unconfirmed_frames(i_queue_control_t *control);
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -61,7 +84,7 @@ uint32_t __time_passed_since_last_sent_i_frame(tiny_fd_handle_t handle, uint8_t 
 
 ///////////////////////////////////////////////////////////////////////////////
 
-bool __can_accept_i_frames(tiny_fd_handle_t handle, uint8_t peer);
+bool __can_accept_i_frames(i_queue_control_t *control);
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -73,6 +96,6 @@ void __reset_i_queue_control(tiny_fd_handle_t handle, uint8_t peer);
 
 ///////////////////////////////////////////////////////////////////////////////
 
-void __log_i_queue_control_statistics(tiny_fd_handle_t handle, uint8_t peer, uint8_t is_full);
+void __i_queue_control_log_statistics(tiny_fd_handle_t handle, uint8_t peer, uint8_t is_full);
 
 ///////////////////////////////////////////////////////////////////////////////
