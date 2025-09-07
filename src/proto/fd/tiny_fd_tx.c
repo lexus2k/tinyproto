@@ -36,59 +36,61 @@
 #include "tiny_fd_service_queue_int.h"
 #include <stdint.h>
 
+typedef struct on_confirmed_ctx_t
+{
+    tiny_fd_handle_t handle;
+    uint8_t peer;
+} on_confirmed_ctx_t;
+
+///////////////////////////////////////////////////////////////////////////////
+
+static bool __on_frame_confirmed(void *ctx, uint8_t nr)
+{
+    on_confirmed_ctx_t *c = (on_confirmed_ctx_t *)ctx;
+    tiny_fd_handle_t handle = c->handle;
+    uint8_t peer = c->peer;
+        
+    uint8_t address = __peer_to_address_field( handle, peer );
+    tiny_fd_frame_info_t *slot = tiny_fd_queue_get_next( &handle->frames.i_queue, TINY_FD_QUEUE_I_FRAME, address, nr );
+    if ( slot != NULL )
+    {
+        if ( handle->on_send_cb )
+        {
+            tiny_mutex_unlock(&handle->frames.mutex);
+            handle->on_send_cb(handle->user_data,
+                                __is_primary_station( handle ) ? (__peer_to_address_field( handle, peer ) >> 2) : TINY_FD_PRIMARY_ADDR,
+                                &slot->payload[0], slot->len);
+            tiny_mutex_lock(&handle->frames.mutex);
+        }
+        tiny_fd_queue_free( &handle->frames.i_queue, slot );
+        if ( tiny_fd_queue_has_free_slots( &handle->frames.i_queue ) )
+        {
+            // Unblock tx queue to allow application to put new frames for sending
+            tiny_events_set(&handle->events, FD_EVENT_QUEUE_HAS_FREE_SLOTS);
+        }
+        handle->peers[peer].retries = handle->retries;
+        return true;
+    }
+    else
+    {
+        handle->peers[peer].retries = handle->retries;
+        return false;
+    }
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 
 void __confirm_sent_frames(tiny_fd_handle_t handle, uint8_t peer, uint8_t nr)
 {
-    // Repeat the loop for all frames that are not confirmed yet till we reach N(r)
-    while ( nr != handle->peers[peer].i_queue_control.tx_state.confirm_ns )
-    {
-        // if we reached the last sent frame index, but we have something to confirm
-        // it means that remote side is out of sync.
-        if ( !((handle->peers[peer].i_queue_control.tx_state.confirm_ns != handle->peers[peer].i_queue_control.tx_state.last_ns)))
-        {
-            // TODO: Out of sync
-            // No solution for this part yet.
-            LOG(TINY_LOG_CRIT, "[%p] Confirmation contains wrong N(r). Remote side is out of sync\n", handle);
-            break;
-        }
-        uint8_t address = __peer_to_address_field( handle, peer );
-        // Call on_send_cb to inform application that frame was sent
-        tiny_fd_frame_info_t *slot = tiny_fd_queue_get_next( &handle->frames.i_queue, TINY_FD_QUEUE_I_FRAME, address, handle->peers[peer].i_queue_control.tx_state.confirm_ns );
-        if ( slot != NULL )
-        {
-            if ( handle->on_send_cb )
-            {
-                tiny_mutex_unlock(&handle->frames.mutex);
-                handle->on_send_cb(handle->user_data,
-                                   __is_primary_station( handle ) ? (__peer_to_address_field( handle, peer ) >> 2) : TINY_FD_PRIMARY_ADDR,
-                                   &slot->payload[0], slot->len);
-                tiny_mutex_lock(&handle->frames.mutex);
-            }
-            tiny_fd_queue_free( &handle->frames.i_queue, slot );
-            if ( tiny_fd_queue_has_free_slots( &handle->frames.i_queue ) )
-            {
-                // Unblock tx queue to allow application to put new frames for sending
-                tiny_events_set(&handle->events, FD_EVENT_QUEUE_HAS_FREE_SLOTS);
-            }
-        }
-        else
-        {
-            // This should never happen !!!
-            // TODO: Add error processing
-            LOG(TINY_LOG_ERR, "[%p] The frame cannot be confirmed: %02X\n", handle, handle->peers[peer].i_queue_control.tx_state.confirm_ns);
-        }
-        handle->peers[peer].i_queue_control.tx_state.confirm_ns = (handle->peers[peer].i_queue_control.tx_state.confirm_ns + 1) & seq_bits_mask;
-        handle->peers[peer].retries = handle->retries;
-    }
-    // Check if we can accept new frames from the application.
-    if ( __can_accept_i_frames( &handle->peers[peer].i_queue_control ) )
+    on_confirmed_ctx_t ctx = {
+        .handle = handle,
+        .peer = peer
+    };
+    if (__i_queue_control_confirm_sent_frames(&handle->peers[peer].i_queue_control, nr, __on_frame_confirmed, &ctx))
     {
         // Unblock specific peer to accept new frames for sending
         tiny_events_set(&handle->peers[peer].events, FD_EVENT_CAN_ACCEPT_I_FRAMES);
     }
-    LOG(TINY_LOG_DEB, "[%p] Last confirmed frame: %02X\n", handle, handle->peers[peer].i_queue_control.tx_state.confirm_ns);
 }
 
 ///////////////////////////////////////////////////////////////////////////////

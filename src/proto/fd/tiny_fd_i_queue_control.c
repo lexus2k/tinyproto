@@ -49,7 +49,7 @@ bool __i_queue_control_confirm_sent_frames(i_queue_control_t *control, uint8_t n
             LOG(TINY_LOG_CRIT, "[%p] Confirmation contains wrong N(r). Remote side is out of sync\n", control);
             break;
         }
-        if ( !cb(&ctx, control->tx_state.confirm_ns) )
+        if ( !cb(ctx, control->tx_state.confirm_ns) )
         {
             // This should never happen !!!
             // TODO: Add error processing
