@@ -96,9 +96,9 @@ void __confirm_sent_frames(tiny_fd_handle_t handle, uint8_t peer, uint8_t nr)
 void __resend_all_unconfirmed_frames(tiny_fd_handle_t handle, uint8_t peer, uint8_t control, uint8_t nr)
 {
     // First, we need to check if that is possible. Maybe remote side is not in sync
-    while ( handle->peers[peer].i_queue_control.tx_state.next_ns != nr )
+    while ( __i_queue_control_get_next_frame_to_send(handle, peer) != nr )
     {
-        if ( handle->peers[peer].i_queue_control.tx_state.confirm_ns == handle->peers[peer].i_queue_control.tx_state.next_ns )
+        if ( __i_queue_control_get_next_frame_to_confirm( &handle->peers[peer].i_queue_control ) == __i_queue_control_get_next_frame_to_send(handle, peer) )
         {
             // consider here that remote side is not in sync, we cannot perform request
             LOG(TINY_LOG_CRIT, "[%p] Remote side not in sync\n", handle);
@@ -106,15 +106,15 @@ void __resend_all_unconfirmed_frames(tiny_fd_handle_t handle, uint8_t peer, uint
                 .header.address = __peer_to_address_field( handle, peer ) | HDLC_CR_BIT,
                 .header.control = HDLC_U_FRAME_TYPE_FRMR | HDLC_U_FRAME_BITS,
                 .data1 = control,
-                .data2 = (handle->peers[peer].next_nr << 5) | (handle->peers[peer].i_queue_control.tx_state.next_ns << 1),
+                .data2 = (handle->peers[peer].next_nr << 5) | (__i_queue_control_get_next_frame_to_send(handle, peer) << 1),
             };
             // Send 2-byte header + 2 extra bytes
             __put_u_s_frame_to_tx_queue(handle, TINY_FD_QUEUE_U_FRAME, &frame, 4);
             break;
         }
-        handle->peers[peer].i_queue_control.tx_state.next_ns = (handle->peers[peer].i_queue_control.tx_state.next_ns - 1) & seq_bits_mask;
+        __i_queue_control_move_to_previous_ns(handle, peer);
     }
-    LOG(TINY_LOG_DEB, "[%p] N(s) is set to %02X\n", handle, handle->peers[peer].i_queue_control.tx_state.next_ns);
+    LOG(TINY_LOG_DEB, "[%p] N(s) is set to %02X\n", handle, __i_queue_control_get_next_frame_to_send(handle, peer));
     tiny_events_set(&handle->events, FD_EVENT_TX_DATA_AVAILABLE);
 }
 
