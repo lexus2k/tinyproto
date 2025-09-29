@@ -94,11 +94,7 @@ bool __i_queue_control_has_unconfirmed_frames(i_queue_control_t *control);
 
 ///////////////////////////////////////////////////////////////////////////////
 
-bool __all_frames_are_sent(tiny_fd_handle_t handle, uint8_t peer);
-
-///////////////////////////////////////////////////////////////////////////////
-
-uint32_t __time_passed_since_last_sent_i_frame(tiny_fd_handle_t handle, uint8_t peer);
+bool __all_frames_are_sent(i_queue_control_t *control);
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -110,10 +106,10 @@ bool __put_i_frame_to_tx_queue(tiny_fd_handle_t handle, uint8_t peer, const void
 
 ///////////////////////////////////////////////////////////////////////////////
 
-void __reset_i_queue_control(tiny_fd_handle_t handle, uint8_t peer);
+void __reset_i_queue_control(i_queue_control_t *control);
 
 ///////////////////////////////////////////////////////////////////////////////
 
-void __i_queue_control_log_statistics(tiny_fd_handle_t handle, uint8_t peer, uint8_t is_full);
+void __i_queue_control_log_statistics(i_queue_control_t *control, uint8_t is_full);
 
 ///////////////////////////////////////////////////////////////////////////////

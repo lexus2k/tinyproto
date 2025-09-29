@@ -72,7 +72,7 @@ static void __switch_to_connected_state(tiny_fd_handle_t handle, uint8_t peer)
     if ( handle->peers[peer].state != TINY_FD_STATE_CONNECTED )
     {
         handle->peers[peer].state = TINY_FD_STATE_CONNECTED;
-        __reset_i_queue_control(handle, peer);
+        __reset_i_queue_control(&handle->peers[peer].i_queue_control);
         handle->peers[peer].sent_nr = 0;
         handle->peers[peer].sent_reject = 0;
         tiny_fd_queue_reset_for( &handle->frames.i_queue, __peer_to_address_field( handle, peer ) );
@@ -104,7 +104,7 @@ static void __switch_to_disconnected_state(tiny_fd_handle_t handle, uint8_t peer
     if ( handle->peers[peer].state != TINY_FD_STATE_DISCONNECTED )
     {
         handle->peers[peer].state = TINY_FD_STATE_DISCONNECTED;
-        __reset_i_queue_control(handle, peer);
+        __reset_i_queue_control(&handle->peers[peer].i_queue_control);
         handle->peers[peer].sent_nr = 0;
         handle->peers[peer].sent_reject = 0;
         tiny_fd_queue_reset_for( &handle->frames.i_queue, __peer_to_address_field( handle, peer ) );
@@ -541,9 +541,11 @@ static uint8_t *tiny_fd_get_next_frame_to_send(tiny_fd_handle_t handle, int *len
 static void tiny_fd_connected_check_idle_timeout(tiny_fd_handle_t handle, uint8_t peer)
 {
     tiny_mutex_lock(&handle->frames.mutex);
+    uint32_t time_passed_since_last_sent_i_frame = (uint32_t)(tiny_millis() - handle->peers[peer].last_sent_i_ts);
     // If all I-frames are sent and no respond from the remote side
-    if ( __i_queue_control_has_unconfirmed_frames(&handle->peers[peer].i_queue_control) && __all_frames_are_sent(handle, peer) &&
-         __time_passed_since_last_sent_i_frame(handle, peer) >= handle->retry_timeout )
+    if ( __i_queue_control_has_unconfirmed_frames(&handle->peers[peer].i_queue_control) &&
+         __all_frames_are_sent(&handle->peers[peer].i_queue_control) &&
+         time_passed_since_last_sent_i_frame >= handle->retry_timeout )
     {
         // if sent frame was not confirmed due to noisy line
         if ( handle->peers[peer].retries > 0 )
@@ -778,12 +780,12 @@ int tiny_fd_send_packet_to(tiny_fd_handle_t handle, uint8_t address, const void 
             {
                 if ( tiny_fd_queue_has_free_slots( &handle->frames.i_queue ) )
                 {
-                    __i_queue_control_log_statistics(handle, peer, 0);
+                    __i_queue_control_log_statistics(&handle->peers[peer].i_queue_control, 0);
                     tiny_events_set(&handle->events, FD_EVENT_QUEUE_HAS_FREE_SLOTS);
                 }
                 else
                 {
-                    __i_queue_control_log_statistics(handle, peer, 1);
+                    __i_queue_control_log_statistics(&handle->peers[peer].i_queue_control, 1);
                 }
                 result = TINY_SUCCESS;
             }

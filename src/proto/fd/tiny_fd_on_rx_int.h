@@ -101,7 +101,7 @@ static int __on_i_frame_read(tiny_fd_handle_t handle, uint8_t peer, void *data, 
         // Decide whenever we need to send RR after user callback
         // Check if we need to send confirmations separately. If we have something to send, just skip RR S-frame.
         // Also at this point, since we received expected frame, sent_reject will be cleared to 0.
-        if ( __all_frames_are_sent(handle, peer) && handle->peers[peer].sent_nr != __i_queue_control_get_next_frame_to_receive(&handle->peers[peer].i_queue_control) )
+        if ( __all_frames_are_sent(&handle->peers[peer].i_queue_control) && handle->peers[peer].sent_nr != __i_queue_control_get_next_frame_to_receive(&handle->peers[peer].i_queue_control) )
         {
             tiny_frame_header_t frame = {
                 .address = __peer_to_address_field( handle, peer ),
@@ -137,7 +137,7 @@ static int __on_s_frame_read(tiny_fd_handle_t handle, uint8_t peer, void *data, 
         if ( address & HDLC_CR_BIT )
         {
             // Send answer if we don't have frames to send
-            if ( __all_frames_are_sent(handle, peer) )
+            if ( __all_frames_are_sent(&handle->peers[peer].i_queue_control) )
             {
                 tiny_frame_header_t frame = {
                     .address = __peer_to_address_field( handle, peer ),
