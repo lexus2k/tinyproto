@@ -59,7 +59,7 @@ bool __i_queue_control_confirm_sent_frames(i_queue_control_t *control, uint8_t n
     }
     LOG(TINY_LOG_DEB, "[%p] Last confirmed frame: %02X\n", control, control->tx_state.confirm_ns);
     // Check if we can accept new frames from the application.
-    return __can_accept_i_frames( control );
+    return !__i_queue_control_tx_full( control );
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -129,11 +129,11 @@ bool __all_frames_are_sent(i_queue_control_t *control)
 
 ///////////////////////////////////////////////////////////////////////////////
 
-bool __can_accept_i_frames(i_queue_control_t *control)
+bool __i_queue_control_tx_full(i_queue_control_t *control)
 {
     uint8_t next_last_ns = (control->tx_state.last_ns + 1) & seq_bits_mask;
     bool can_accept = next_last_ns != control->tx_state.confirm_ns;
-    return can_accept;
+    return !can_accept;
 }
 
 ///////////////////////////////////////////////////////////////////////////////

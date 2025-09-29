@@ -795,7 +795,7 @@ int tiny_fd_send_packet_to(tiny_fd_handle_t handle, uint8_t address, const void 
                 // !!!! If this log appears, then in the code of the protocol something is definitely wrong !!!!
                 LOG(TINY_LOG_ERR, "[%p] Wrong flag FD_EVENT_QUEUE_HAS_FREE_SLOTS\n", handle);
             }
-            if ( __can_accept_i_frames( &handle->peers[peer].i_queue_control ) )
+            if ( !__i_queue_control_tx_full( &handle->peers[peer].i_queue_control ) )
             {
                 tiny_events_set(&handle->peers[peer].events, FD_EVENT_CAN_ACCEPT_I_FRAMES);
             }
