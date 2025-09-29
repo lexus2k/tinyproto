@@ -84,7 +84,6 @@ extern "C"
         tiny_fd_state_t state;
         uint8_t addr;        // Peer address
 
-        uint8_t next_nr;     // frame waiting to receive
         uint8_t sent_nr;     // frame index last sent back
         uint8_t sent_reject; // If reject was already sent
 

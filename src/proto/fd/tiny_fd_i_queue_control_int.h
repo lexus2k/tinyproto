@@ -40,10 +40,18 @@ typedef struct i_queue_control_send_t
     uint8_t next_ns;     // next frame to be sent
 } i_queue_control_send_t;
 
+typedef struct i_queue_control_recv_t
+{
+    uint8_t next_nr;     // next expected frame number
+} i_queue_control_recv_t;
+
 typedef struct i_queue_control_t
 {
     struct i_queue_control_send_t tx_state;
+    struct i_queue_control_recv_t rx_state;
 } i_queue_control_t;
+
+typedef bool (*on_i_frame_to_process_cb_t)(void *ctx, uint8_t nr);
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -54,21 +62,31 @@ static inline uint8_t __i_queue_control_get_next_frame_to_confirm(i_queue_contro
 
 ///////////////////////////////////////////////////////////////////////////////
 
-typedef bool (*on_frame_confirmed_cb_t)(void *ctx, uint8_t nr);
-
-bool __i_queue_control_confirm_sent_frames(i_queue_control_t *control, uint8_t nr, on_frame_confirmed_cb_t cb, void *ctx);
+bool __i_queue_control_confirm_sent_frames(i_queue_control_t *control, uint8_t nr, on_i_frame_to_process_cb_t cb, void *ctx);
 
 ///////////////////////////////////////////////////////////////////////////////
 
-uint8_t __i_queue_control_get_next_frame_to_send(tiny_fd_handle_t handle, uint8_t peer);
+bool __i_queue_control_restransmit_frame(i_queue_control_t *control, uint8_t nr, on_i_frame_to_process_cb_t cb, void *ctx);
 
 ///////////////////////////////////////////////////////////////////////////////
 
-void __i_queue_control_move_to_previous_ns(tiny_fd_handle_t handle, uint8_t peer);
+uint8_t __i_queue_control_get_next_frame_to_send(i_queue_control_t *control);
 
 ///////////////////////////////////////////////////////////////////////////////
 
-void __i_queue_control_move_to_next_ns(tiny_fd_handle_t handle, uint8_t peer);
+uint8_t __i_queue_control_get_next_frame_to_receive(i_queue_control_t *control);
+
+///////////////////////////////////////////////////////////////////////////////
+
+void __i_queue_control_move_to_next_frame_to_receive(i_queue_control_t *control);
+
+///////////////////////////////////////////////////////////////////////////////
+
+void __i_queue_control_move_to_previous_ns(i_queue_control_t *control);
+
+///////////////////////////////////////////////////////////////////////////////
+
+void __i_queue_control_move_to_next_ns(i_queue_control_t *control);
 
 ///////////////////////////////////////////////////////////////////////////////
 

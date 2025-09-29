@@ -35,7 +35,7 @@
 
 ///////////////////////////////////////////////////////////////////////////////
 
-bool __i_queue_control_confirm_sent_frames(i_queue_control_t *control, uint8_t nr, on_frame_confirmed_cb_t cb, void *ctx)
+bool __i_queue_control_confirm_sent_frames(i_queue_control_t *control, uint8_t nr, on_i_frame_to_process_cb_t cb, void *ctx)
 {
     // Repeat the loop for all frames that are not confirmed yet till we reach N(r)
     while ( nr != control->tx_state.confirm_ns )
@@ -64,23 +64,53 @@ bool __i_queue_control_confirm_sent_frames(i_queue_control_t *control, uint8_t n
 
 ///////////////////////////////////////////////////////////////////////////////
 
-uint8_t __i_queue_control_get_next_frame_to_send(tiny_fd_handle_t handle, uint8_t peer)
+bool __i_queue_control_restransmit_frame(i_queue_control_t *control, uint8_t nr, on_i_frame_to_process_cb_t cb, void *ctx)
 {
-    return handle->peers[peer].i_queue_control.tx_state.next_ns;
+    // First, we need to check if that is possible. Maybe remote side is not in sync
+    while ( control->tx_state.next_ns != nr )
+    {
+        if ( control->tx_state.confirm_ns == control->tx_state.next_ns )
+        {
+            // cb(ctx, nr);
+            // consider here that remote side is not in sync, we cannot perform request
+            /*
+            LOG(TINY_LOG_CRIT, "[%p] Remote side not in sync\n", handle);
+            tiny_fd_u_frame_t frame = {
+                .header.address = __peer_to_address_field( handle, peer ) | HDLC_CR_BIT,
+                .header.control = HDLC_U_FRAME_TYPE_FRMR | HDLC_U_FRAME_BITS,
+                .data1 = control,
+                .data2 = (handle->peers[peer].next_nr << 5) | (__i_queue_control_get_next_frame_to_send(handle, peer) << 1),
+            };
+            // Send 2-byte header + 2 extra bytes
+            __put_u_s_frame_to_tx_queue(handle, TINY_FD_QUEUE_U_FRAME, &frame, 4);*/
+            break;
+        }
+        control->tx_state.next_ns = (control->tx_state.next_ns - 1) & seq_bits_mask;
+    }
+    LOG(TINY_LOG_DEB, "[%p] N(s) is set to %02X\n", control, control->tx_state.next_ns);
+//    tiny_events_set(&handle->events, FD_EVENT_TX_DATA_AVAILABLE);
+    return false;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 
-void __i_queue_control_move_to_next_ns(tiny_fd_handle_t handle, uint8_t peer)
+uint8_t __i_queue_control_get_next_frame_to_send(i_queue_control_t *control)
 {
-    handle->peers[peer].i_queue_control.tx_state.next_ns = (handle->peers[peer].i_queue_control.tx_state.next_ns + 1) & seq_bits_mask;
+    return control->tx_state.next_ns;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 
-void __i_queue_control_move_to_previous_ns(tiny_fd_handle_t handle, uint8_t peer)
+void __i_queue_control_move_to_next_ns(i_queue_control_t *control)
 {
-    handle->peers[peer].i_queue_control.tx_state.next_ns = (handle->peers[peer].i_queue_control.tx_state.next_ns - 1) & seq_bits_mask;
+    control->tx_state.next_ns = (control->tx_state.next_ns + 1) & seq_bits_mask;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+void __i_queue_control_move_to_previous_ns(i_queue_control_t *control)
+{
+    control->tx_state.next_ns = (control->tx_state.next_ns - 1) & seq_bits_mask;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -138,6 +168,8 @@ void __reset_i_queue_control(tiny_fd_handle_t handle, uint8_t peer)
     handle->peers[peer].i_queue_control.tx_state.confirm_ns = 0;
     handle->peers[peer].i_queue_control.tx_state.last_ns = 0;
     handle->peers[peer].i_queue_control.tx_state.next_ns = 0;
+
+    handle->peers[peer].i_queue_control.rx_state.next_nr = 0;
     tiny_fd_queue_reset_for( &handle->frames.i_queue, __peer_to_address_field( handle, peer ) );
 }
 
@@ -155,6 +187,20 @@ void __i_queue_control_log_statistics(tiny_fd_handle_t handle, uint8_t peer, uin
     LOG(TINY_LOG_INFO, "[%p] I_QUEUE is N(S)queue=%d, N(S)confirm=%d, N(S)next=%d\n", handle,
         handle->peers[peer].i_queue_control.tx_state.last_ns, handle->peers[peer].i_queue_control.tx_state.confirm_ns, handle->peers[peer].i_queue_control.tx_state.next_ns);
     }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+uint8_t __i_queue_control_get_next_frame_to_receive(i_queue_control_t *control)
+{
+    return control->rx_state.next_nr;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+void __i_queue_control_move_to_next_frame_to_receive(i_queue_control_t *control)
+{
+    control->rx_state.next_nr = (control->rx_state.next_nr + 1) & seq_bits_mask;
 }
 
 ///////////////////////////////////////////////////////////////////////////////

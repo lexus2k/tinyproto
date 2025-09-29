@@ -73,7 +73,6 @@ static void __switch_to_connected_state(tiny_fd_handle_t handle, uint8_t peer)
     {
         handle->peers[peer].state = TINY_FD_STATE_CONNECTED;
         __reset_i_queue_control(handle, peer);
-        handle->peers[peer].next_nr = 0;
         handle->peers[peer].sent_nr = 0;
         handle->peers[peer].sent_reject = 0;
         tiny_fd_queue_reset_for( &handle->frames.i_queue, __peer_to_address_field( handle, peer ) );
@@ -106,7 +105,6 @@ static void __switch_to_disconnected_state(tiny_fd_handle_t handle, uint8_t peer
     {
         handle->peers[peer].state = TINY_FD_STATE_DISCONNECTED;
         __reset_i_queue_control(handle, peer);
-        handle->peers[peer].next_nr = 0;
         handle->peers[peer].sent_nr = 0;
         handle->peers[peer].sent_reject = 0;
         tiny_fd_queue_reset_for( &handle->frames.i_queue, __peer_to_address_field( handle, peer ) );
@@ -472,18 +470,19 @@ static uint8_t *tiny_fd_get_next_i_frame(tiny_fd_handle_t handle, int *len, uint
         // If sending of I-frames is not allowed then just exit
         return NULL;
     }
-    ptr = tiny_fd_queue_get_next( &handle->frames.i_queue, TINY_FD_QUEUE_I_FRAME, address, __i_queue_control_get_next_frame_to_send(handle, peer) );
+    ptr = tiny_fd_queue_get_next( &handle->frames.i_queue, TINY_FD_QUEUE_I_FRAME, address, __i_queue_control_get_next_frame_to_send(&handle->peers[peer].i_queue_control) );
     if ( ptr != NULL )
     {
         data = (uint8_t *)&ptr->header;
         *len = ptr->len + sizeof(tiny_frame_header_t);
-        LOG(TINY_LOG_INFO, "[%p] Sending I-Frame N(R-awaiting)=%02X,N(S-seq sent)=%02X with address [%02X] to %s\n", handle, handle->peers[peer].next_nr,
-            __i_queue_control_get_next_frame_to_send(handle, peer), data[0], __is_primary_station( handle ) ? "secondary" : "primary" );
+        LOG(TINY_LOG_INFO, "[%p] Sending I-Frame N(R-awaiting)=%02X,N(S-seq sent)=%02X with address [%02X] to %s\n", handle,
+            __i_queue_control_get_next_frame_to_receive(&handle->peers[peer].i_queue_control),
+            __i_queue_control_get_next_frame_to_send(&handle->peers[peer].i_queue_control), data[0], __is_primary_station( handle ) ? "secondary" : "primary" );
         ptr->header.control &= 0x0F;
-        ptr->header.control |= (handle->peers[peer].next_nr << 5);
-        __i_queue_control_move_to_next_ns(handle, peer);
+        ptr->header.control |= ( __i_queue_control_get_next_frame_to_receive(&handle->peers[peer].i_queue_control) << 5);
+        __i_queue_control_move_to_next_ns(&handle->peers[peer].i_queue_control);
         // Move to different place
-        handle->peers[peer].sent_nr = handle->peers[peer].next_nr;
+        handle->peers[peer].sent_nr = __i_queue_control_get_next_frame_to_receive(&handle->peers[peer].i_queue_control);
         handle->peers[peer].last_sent_i_ts = tiny_millis();
     }
     return data;
@@ -518,7 +517,8 @@ static uint8_t *tiny_fd_get_next_frame_to_send(tiny_fd_handle_t handle, int *len
         {
             tiny_frame_header_t frame = {
                 .address = address,
-                .control = HDLC_S_FRAME_BITS | HDLC_S_FRAME_TYPE_RR | (handle->peers[peer].next_nr << 5),
+                .control = HDLC_S_FRAME_BITS | HDLC_S_FRAME_TYPE_RR |
+                    (__i_queue_control_get_next_frame_to_receive(&handle->peers[peer].i_queue_control) << 5),
             };
             __put_u_s_frame_to_tx_queue(handle, TINY_FD_QUEUE_S_FRAME, &frame, 2);
         }
@@ -574,7 +574,8 @@ static void tiny_fd_connected_check_idle_timeout(tiny_fd_handle_t handle, uint8_
         // Nothing to send, all frames are confirmed, just send keep alive
         tiny_frame_header_t frame = {
             .address = __peer_to_address_field( handle, peer ),
-            .control = HDLC_S_FRAME_BITS | HDLC_S_FRAME_TYPE_RR | (handle->peers[peer].next_nr << 5),
+            .control = HDLC_S_FRAME_BITS | HDLC_S_FRAME_TYPE_RR |
+               (__i_queue_control_get_next_frame_to_receive(&handle->peers[peer].i_queue_control) << 5),
         };
         handle->peers[peer].ka_confirmed = 0;
         __put_u_s_frame_to_tx_queue(handle, TINY_FD_QUEUE_S_FRAME, &frame, 2);

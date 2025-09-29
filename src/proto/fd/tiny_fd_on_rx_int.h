@@ -45,14 +45,14 @@ static void __switch_to_disconnected_state(tiny_fd_handle_t handle, uint8_t peer
 static int __check_received_frame(tiny_fd_handle_t handle, uint8_t peer, uint8_t ns)
 {
     int result = TINY_SUCCESS;
-    if ( ns == handle->peers[peer].next_nr )
+    if ( ns == __i_queue_control_get_next_frame_to_receive(&handle->peers[peer].i_queue_control) )
     {
         // This is what we've been waiting for.
         // If new frame number is the one we expect, we update next expected frame number
         // and we clear sent reject flag to 0 in order to allow REJ frame to be sent again.
 
         // LOG("[%p] Confirming received frame <= %d\n", handle, ns);
-        handle->peers[peer].next_nr = (handle->peers[peer].next_nr + 1) & seq_bits_mask;
+        __i_queue_control_move_to_next_frame_to_receive(&handle->peers[peer].i_queue_control);
         handle->peers[peer].sent_reject = 0;
     }
     else
@@ -65,7 +65,8 @@ static int __check_received_frame(tiny_fd_handle_t handle, uint8_t peer, uint8_t
         {
             tiny_frame_header_t frame = {
                 .address = __peer_to_address_field( handle, peer ) | HDLC_CR_BIT,
-                .control = HDLC_S_FRAME_BITS | HDLC_S_FRAME_TYPE_REJ | (handle->peers[peer].next_nr << 5),
+                .control = HDLC_S_FRAME_BITS | HDLC_S_FRAME_TYPE_REJ |
+                    (__i_queue_control_get_next_frame_to_receive(&handle->peers[peer].i_queue_control) << 5),
             };
             handle->peers[peer].sent_reject = 1;
             __put_u_s_frame_to_tx_queue(handle, TINY_FD_QUEUE_S_FRAME, &frame, sizeof(tiny_frame_header_t));
@@ -100,11 +101,12 @@ static int __on_i_frame_read(tiny_fd_handle_t handle, uint8_t peer, void *data, 
         // Decide whenever we need to send RR after user callback
         // Check if we need to send confirmations separately. If we have something to send, just skip RR S-frame.
         // Also at this point, since we received expected frame, sent_reject will be cleared to 0.
-        if ( __all_frames_are_sent(handle, peer) && handle->peers[peer].sent_nr != handle->peers[peer].next_nr )
+        if ( __all_frames_are_sent(handle, peer) && handle->peers[peer].sent_nr != __i_queue_control_get_next_frame_to_receive(&handle->peers[peer].i_queue_control) )
         {
             tiny_frame_header_t frame = {
                 .address = __peer_to_address_field( handle, peer ),
-                .control = HDLC_S_FRAME_BITS | HDLC_S_FRAME_TYPE_RR | (handle->peers[peer].next_nr << 5),
+                .control = HDLC_S_FRAME_BITS | HDLC_S_FRAME_TYPE_RR |
+                    (__i_queue_control_get_next_frame_to_receive(&handle->peers[peer].i_queue_control) << 5),
             };
             __put_u_s_frame_to_tx_queue(handle, TINY_FD_QUEUE_S_FRAME, &frame, 2);
         }
@@ -139,7 +141,8 @@ static int __on_s_frame_read(tiny_fd_handle_t handle, uint8_t peer, void *data, 
             {
                 tiny_frame_header_t frame = {
                     .address = __peer_to_address_field( handle, peer ),
-                    .control = HDLC_S_FRAME_BITS | HDLC_S_FRAME_TYPE_RR | (handle->peers[peer].next_nr << 5),
+                    .control = HDLC_S_FRAME_BITS | HDLC_S_FRAME_TYPE_RR |
+                        (__i_queue_control_get_next_frame_to_receive(&handle->peers[peer].i_queue_control) << 5),
                 };
                 __put_u_s_frame_to_tx_queue(handle, TINY_FD_QUEUE_S_FRAME, &frame, 2);
             }
