@@ -94,6 +94,7 @@ jobs:
           ./.travis/setup_esp_build_env.sh travis
       - name: Building ESP32 code
         run: |
+          ~/.espressif/python_env/idf4.3_py3.10_env/bin/pip install "setuptools<78"
           . ~/esp/esp-idf/export.sh
           cd examples/esp32_idf/uart/tinyfd_loopback/components/tinyproto && ln -s ../../../../../../src && ln -s ../../../../../../component.mk
           cd ../.. && make defconfig
