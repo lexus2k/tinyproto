@@ -261,9 +261,9 @@ TEST(FD, resend_timeout)
     helper1.send("#");
     std::this_thread::sleep_for(std::chrono::milliseconds(70 * 2 + 100));
     helper1.stop();
-    const uint8_t reconnect_dat[] = {0x7E, 0x01, 0x10, '#',  0x18, 0x1A, 0x7E, // 1-st attempt
-                                     0x7E, 0x01, 0x10, '#',  0x18, 0x1A, 0x7E, // 2-nd attempt (1st retry)
-                                     0x7E, 0x01, 0x10, '#',  0x18, 0x1A, 0x7E, // 3-rd attempt (2nd retry)
+    const uint8_t reconnect_dat[] = {0x7E, 0x01, 0x00, '#',  0x89, 0x8F, 0x7E, // 1-st attempt (I-frame, no P bit in ABM)
+                                     0x7E, 0x01, 0x00, '#',  0x89, 0x8F, 0x7E, // 2-nd attempt (1st retry)
+                                     0x7E, 0x01, 0x00, '#',  0x89, 0x8F, 0x7E, // 3-rd attempt (2nd retry)
                                      0x7E, 0x03, 0x3F, 0x5B, 0xEC, 0x7E};      // Attempt to reconnect (SABM)
     uint8_t buffer[64]{};
     conn.endpoint2().read(buffer, sizeof(buffer));

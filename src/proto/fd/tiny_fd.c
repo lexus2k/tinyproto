@@ -372,6 +372,7 @@ int tiny_fd_init(tiny_fd_handle_t *handle, tiny_fd_init_t *init)
     protocol->user_data = init->pdata;
     protocol->on_read_cb = init->on_read_cb;
     protocol->on_send_cb = init->on_send_cb;
+    protocol->on_read_ui_cb = init->on_read_ui_cb;
     protocol->on_connect_event_cb = init->on_connect_event_cb;
     protocol->log_frame_cb = init->log_frame_cb;
     protocol->send_timeout = init->send_timeout;
@@ -523,7 +524,19 @@ static uint8_t *tiny_fd_get_next_frame_to_send(tiny_fd_handle_t handle, int *len
     if ( data != NULL )
     {
         tiny_frame_header_t *header = (tiny_frame_header_t *)data;
-        header->control |= HDLC_P_BIT;
+        if ( handle->mode == TINY_FD_MODE_NRM )
+        {
+            // NRM: Always set P/F bit for marker passing
+            header->control |= HDLC_P_BIT;
+        }
+        else
+        {
+            // ABM: Set P/F only on U-frames (SABM, DISC, UA, DM always use P/F)
+            if ( (header->control & HDLC_U_FRAME_MASK) == HDLC_U_FRAME_BITS )
+            {
+                header->control |= HDLC_P_BIT;
+            }
+        }
         handle->last_marker_ts = tiny_millis();
         handle->peers[peer].last_sent_frame_ts = tiny_millis();
         __tiny_fd_log_frame(handle, TINY_FD_FRAME_DIRECTION_OUT, data, *len);
@@ -572,7 +585,7 @@ static void tiny_fd_connected_check_idle_timeout(tiny_fd_handle_t handle, uint8_
         // Nothing to send, all frames are confirmed, just send keep alive
         tiny_frame_header_t frame = {
             .address = __peer_to_address_field( handle, peer ),
-            .control = HDLC_S_FRAME_BITS | HDLC_S_FRAME_TYPE_RR |
+            .control = HDLC_S_FRAME_BITS | HDLC_S_FRAME_TYPE_RR | HDLC_P_BIT |
                (__i_queue_control_get_next_frame_to_receive(&handle->peers[peer].i_queue_control) << 5),
         };
         handle->peers[peer].ka_confirmed = 0;
@@ -819,6 +832,51 @@ int tiny_fd_send_packet_to(tiny_fd_handle_t handle, uint8_t address, const void 
 int tiny_fd_send_packet(tiny_fd_handle_t handle, const void *data, int len, uint32_t timeout)
 {
     return tiny_fd_send_packet_to(handle, TINY_FD_PRIMARY_ADDR, data, len, timeout);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+int tiny_fd_send_ui_packet_to(tiny_fd_handle_t handle, uint8_t address, const void *data, int len)
+{
+    if ( handle == NULL || (data == NULL && len > 0) )
+    {
+        return TINY_ERR_INVALID_DATA;
+    }
+    if ( len > tiny_fd_queue_get_mtu( &handle->frames.s_queue ) )
+    {
+        return TINY_ERR_DATA_TOO_LARGE;
+    }
+    uint8_t peer;
+    if ( __is_secondary_station( handle ) && address == TINY_FD_PRIMARY_ADDR )
+    {
+        address = handle->addr;
+    }
+    peer = __address_field_to_peer( handle, (address << 2) | HDLC_E_BIT );
+    if ( peer == HDLC_INVALID_PEER_INDEX )
+    {
+        return TINY_ERR_UNKNOWN_PEER;
+    }
+
+    tiny_mutex_lock(&handle->frames.mutex);
+    tiny_fd_frame_info_t *slot = tiny_fd_queue_allocate( &handle->frames.s_queue, TINY_FD_QUEUE_U_FRAME, data, len );
+    if ( slot == NULL )
+    {
+        tiny_mutex_unlock(&handle->frames.mutex);
+        return TINY_ERR_FAILED;
+    }
+    slot->header.address = __peer_to_address_field( handle, peer );
+    slot->header.control = HDLC_U_FRAME_TYPE_UI | HDLC_U_FRAME_BITS;
+    LOG(TINY_LOG_DEB, "[%p] QUEUE UI-PUT: [%02X] [%02X] len=%d\n", handle, slot->header.address, slot->header.control, len);
+    tiny_events_set(&handle->events, FD_EVENT_TX_DATA_AVAILABLE);
+    tiny_mutex_unlock(&handle->frames.mutex);
+    return TINY_SUCCESS;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+int tiny_fd_send_ui_packet(tiny_fd_handle_t handle, const void *data, int len)
+{
+    return tiny_fd_send_ui_packet_to(handle, TINY_FD_PRIMARY_ADDR, data, len);
 }
 
 ///////////////////////////////////////////////////////////////////////////////

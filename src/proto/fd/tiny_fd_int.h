@@ -105,6 +105,8 @@ extern "C"
         on_frame_read_cb_t on_read_cb;
         /// Callback to process received frames
         on_frame_send_cb_t on_send_cb;
+        /// Callback to process received UI frames
+        on_frame_read_cb_t on_read_ui_cb;
         /// Callback to get connect/disconnect notification
         on_connect_event_cb_t on_connect_event_cb;
         /// Callback to log frames

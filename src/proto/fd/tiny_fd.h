@@ -117,6 +117,7 @@ extern "C"
         TINY_FD_FRAME_SUBTYPE_SABM = 0x2C, ///< U-frame subtype SABM
         TINY_FD_FRAME_SUBTYPE_SNRM = 0x80, ///< U-frame subtype SNRM
         TINY_FD_FRAME_SUBTYPE_DISC = 0x40, ///< U-frame subtype DISC
+        TINY_FD_FRAME_SUBTYPE_UI = 0x00, ///< U-frame subtype UI (Unnumbered Information)
     } tiny_fd_frame_subtype_t;
 
     /**
@@ -254,6 +255,13 @@ extern "C"
          * Communication link mode. Refer to TINY_FD_MODE_ABM, TINY_FD_MODE_NRM, TINY_FD_MODE_ARM.
          */
         uint8_t mode;
+
+        /**
+         * Callback to process incoming UI (Unnumbered Information) frames.
+         * UI frames are connectionless — they can be received in any state (even disconnected).
+         * Can be NULL if UI frames are not needed.
+         */
+        on_frame_read_cb_t on_read_ui_cb;
 
     } tiny_fd_init_t;
 
@@ -494,6 +502,39 @@ extern "C"
      *       TINY_SUCCESS in case of success, or error code in case of failure.
      */
     extern int tiny_fd_send_packet(tiny_fd_handle_t handle, const void *buf, int len, uint32_t timeout);
+
+    /**
+     * @brief Sends UI (Unnumbered Information) frame over full-duplex protocol.
+     *
+     * Sends a connectionless UI frame to the specified address. UI frames can be sent
+     * in any connection state (even when disconnected). They are not acknowledged and
+     * do not use sequence numbers.
+     *
+     * @param handle   tiny_fd_handle_t handle
+     * @param address  address of remote peer. For primary device, please use TINY_FD_PRIMARY_ADDR
+     * @param buf      data to send
+     * @param len      length of data to send
+     *
+     * @return TINY_SUCCESS if the UI frame was queued for sending.
+     *         TINY_ERR_FAILED if no room in internal queue.
+     *         TINY_ERR_DATA_TOO_LARGE if data exceeds MTU.
+     *         TINY_ERR_INVALID_DATA if parameters are invalid.
+     */
+    extern int tiny_fd_send_ui_packet_to(tiny_fd_handle_t handle, uint8_t address, const void *buf, int len);
+
+    /**
+     * @brief Sends UI (Unnumbered Information) frame to primary station.
+     *
+     * Sends a connectionless UI frame to the primary station.
+     * For details, please refer to tiny_fd_send_ui_packet_to().
+     *
+     * @param handle   tiny_fd_handle_t handle
+     * @param buf      data to send
+     * @param len      length of data to send
+     *
+     * @return Success result or error code
+     */
+    extern int tiny_fd_send_ui_packet(tiny_fd_handle_t handle, const void *buf, int len);
 
     /**
      * @}

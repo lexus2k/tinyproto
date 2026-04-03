@@ -130,6 +130,7 @@ static const char *__get_frame_subtype_str(uint8_t control)
         case HDLC_U_FRAME_TYPE_SABM: return "SABM";
         case HDLC_U_FRAME_TYPE_SNRM: return "SNRM";
         case HDLC_U_FRAME_TYPE_DISC: return "DISC";
+        case HDLC_U_FRAME_TYPE_UI:   return "  UI";
         default:                     return " UNK";
     }
 }

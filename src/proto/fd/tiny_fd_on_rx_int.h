@@ -142,6 +142,7 @@ static int __on_s_frame_read(tiny_fd_handle_t handle, uint8_t peer, void *data, 
                 tiny_frame_header_t frame = {
                     .address = __peer_to_address_field( handle, peer ),
                     .control = HDLC_S_FRAME_BITS | HDLC_S_FRAME_TYPE_RR |
+                        (control & HDLC_P_BIT) |
                         (__i_queue_control_get_next_frame_to_receive(&handle->peers[peer].i_queue_control) << 5),
                 };
                 __put_u_s_frame_to_tx_queue(handle, TINY_FD_QUEUE_S_FRAME, &frame, 2);
@@ -234,6 +235,19 @@ static int __on_u_frame_read(tiny_fd_handle_t handle, uint8_t peer, void *data, 
         if ( handle->peers[peer].state != TINY_FD_STATE_DISCONNECTED )
         {
             __switch_to_disconnected_state(handle, peer);
+        }
+    }
+    else if ( type == HDLC_U_FRAME_TYPE_UI )
+    {
+        // UI (Unnumbered Information) — connectionless data, accepted in any state
+        LOG(TINY_LOG_INFO, "[%p] UI frame received, len=%d\n", handle, len);
+        if ( handle->on_read_ui_cb && len > 2 )
+        {
+            tiny_mutex_unlock(&handle->frames.mutex);
+            handle->on_read_ui_cb(handle->user_data,
+                                   __is_primary_station( handle ) ? (__peer_to_address_field( handle, peer ) >> 2) : TINY_FD_PRIMARY_ADDR,
+                                   (uint8_t *)data + 2, len - 2);
+            tiny_mutex_lock(&handle->frames.mutex);
         }
     }
     else

@@ -204,12 +204,12 @@ TEST(TINY_FD_ABM, ABM_RecieveTwoConsequentIFrames)
     // Check RR frame
     CHECK_EQUAL(0x7E, outBuffer[0]); // Flag
     CHECK_EQUAL(0x01, outBuffer[1]); // Address field - CR bit must be cleared
-    CHECK_EQUAL(0x31, outBuffer[2]); // RR packet with N(R) = 1
+    CHECK_EQUAL(0x21, outBuffer[2]); // RR packet with N(R) = 1
     CHECK_EQUAL(0x7E, outBuffer[3]); // Flag
     // Check RR frame
     CHECK_EQUAL(0x7E, outBuffer[4]); // Flag
     CHECK_EQUAL(0x01, outBuffer[5]); // Address field - CR bit must be cleared
-    CHECK_EQUAL(0x51, outBuffer[6]); // RR packet with N(R) = 2
+    CHECK_EQUAL(0x41, outBuffer[6]); // RR packet with N(R) = 2
     CHECK_EQUAL(0x7E, outBuffer[7]); // Flag
     // Now we can send I-frames again
 }
@@ -229,12 +229,12 @@ TEST(TINY_FD_ABM, ABM_RecieveOutOfOrderIFrames)
     // Check RR frame
     CHECK_EQUAL(0x7E, outBuffer[0]); // Flag
     CHECK_EQUAL(0x01, outBuffer[1]); // Address field - CR bit must be cleared
-    CHECK_EQUAL(0x31, outBuffer[2]); // RR packet with N(R) = 1
+    CHECK_EQUAL(0x21, outBuffer[2]); // RR packet with N(R) = 1
     CHECK_EQUAL(0x7E, outBuffer[3]); // Flag
     // Check RR frame
     CHECK_EQUAL(0x7E, outBuffer[4]); // Flag
-    CHECK_EQUAL(0x03, outBuffer[5]); // Address field - CR bit must be cleared
-    CHECK_EQUAL(0x39, outBuffer[6]); // REJ packet with N(R) = 2
+    CHECK_EQUAL(0x03, outBuffer[5]); // Address field - CR bit set (REJ is a command)
+    CHECK_EQUAL(0x29, outBuffer[6]); // REJ packet with N(R) = 1
     CHECK_EQUAL(0x7E, outBuffer[7]); // Flag
 }
 
@@ -292,7 +292,7 @@ TEST(TINY_FD_ABM, ABM_CheckMtuAPI)
     // Check MTU API
     int mtu = tiny_fd_get_mtu(handle);
     CHECK(mtu > 0); // MTU should be greater than 0
-    CHECK_EQUAL(33, mtu); // Assuming the MTU is 34 bytes according to protocol test configuration
+    CHECK_EQUAL(32, mtu); // MTU based on 1024-byte buffer and protocol overhead
 }
 
 TEST(TINY_FD_ABM, ABM_CheckLoggerFunction)
@@ -370,21 +370,21 @@ TEST(TINY_FD_ABM, ABM_CheckMtuAndSendSplit)
     // Check first I-frame
     CHECK_EQUAL(0x7E, outBuffer[0]); // Flag
     CHECK_EQUAL(0x01, outBuffer[1]); // Address field
-    CHECK_EQUAL(0x10, outBuffer[2]); // Control byte
+    CHECK_EQUAL(0x00, outBuffer[2]); // Control byte: I-frame N(S)=0,N(R)=0
     CHECK_EQUAL(0x01, outBuffer[3]); // Data byte
     CHECK_EQUAL(0x02, outBuffer[4]); // Data byte
     CHECK_EQUAL(0x7E, outBuffer[5]); // Flag
     // Check second I-frame
     CHECK_EQUAL(0x7E, outBuffer[6]); // Flag
     CHECK_EQUAL(0x01, outBuffer[7]); // Address field
-    CHECK_EQUAL(0x12, outBuffer[8]); // Control byte
+    CHECK_EQUAL(0x02, outBuffer[8]); // Control byte: I-frame N(S)=1,N(R)=0
     CHECK_EQUAL(0x03, outBuffer[9]); // Data byte
     CHECK_EQUAL(0x04, outBuffer[10]); // Data byte
     CHECK_EQUAL(0x7E, outBuffer[11]); // Flag
     // Check third I-frame
     CHECK_EQUAL(0x7E, outBuffer[12]); // Flag
     CHECK_EQUAL(0x01, outBuffer[13]); // Address field
-    CHECK_EQUAL(0x14, outBuffer[14]); // Control byte
+    CHECK_EQUAL(0x04, outBuffer[14]); // Control byte: I-frame N(S)=2,N(R)=0
     CHECK_EQUAL(0x05, outBuffer[15]); // Data byte
     CHECK_EQUAL(0x7E, outBuffer[16]); // Flag
     // Check that I-frame larger than mtu size cannot be sent
@@ -481,7 +481,7 @@ TEST(TINY_FD_ABM, ABM_RSETResetsSequenceNumbers)
     // Should get RR with N(R)=1 confirming the frame was accepted
     CHECK_EQUAL(0x7E, outBuffer[0]); // Flag
     CHECK_EQUAL(0x01, outBuffer[1]); // Address field
-    CHECK_EQUAL(0x31, outBuffer[2]); // RR with N(R)=1
+    CHECK_EQUAL(0x21, outBuffer[2]); // RR with N(R)=1
     CHECK_EQUAL(0x7E, outBuffer[3]); // Flag
 }
 
@@ -512,4 +512,185 @@ TEST(TINY_FD_ABM, ABM_DMReceiveDisconnects)
     auto read_result = tiny_fd_on_rx_data(handle, (uint8_t *)"\x7E\x01\x0F\x7E", 4); // DM frame
     CHECK_EQUAL(TINY_SUCCESS, read_result);
     CHECK(!connected); // Should have disconnected
+}
+
+// ==========================================================================
+// P/F Bit Enforcement Tests
+// ==========================================================================
+
+TEST(TINY_FD_ABM, ABM_PFBit_UFramesAlwaysHavePBit)
+{
+    // U-frames (SABM, UA, DM, DISC) should always have P/F bit set in ABM
+    // Send SABM, check UA response has P/F bit
+    auto read_result = tiny_fd_on_rx_data(handle, (uint8_t *)"\x7E\x03\x2F\x7E", 4); // SABM
+    CHECK_EQUAL(TINY_SUCCESS, read_result);
+    int len = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
+    CHECK_EQUAL(4, len);
+    CHECK_EQUAL(0x73, outBuffer[2]); // UA = 0x63 | P_BIT(0x10) = 0x73
+
+    // Send DISC, check UA response has P/F bit
+    read_result = tiny_fd_on_rx_data(handle, (uint8_t *)"\x7E\x03\x43\x7E", 4); // DISC
+    CHECK_EQUAL(TINY_SUCCESS, read_result);
+    len = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
+    CHECK_EQUAL(4, len);
+    CHECK_EQUAL(0x73, outBuffer[2]); // UA with P/F bit
+
+    // Send I-frame while disconnected, check DM has P/F bit
+    read_result = tiny_fd_on_rx_data(handle, (uint8_t *)"\x7E\x03\x00\x11\x7E", 5);
+    CHECK_EQUAL(TINY_SUCCESS, read_result);
+    len = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
+    CHECK_EQUAL(4, len);
+    CHECK_EQUAL(0x1F, outBuffer[2]); // DM = 0x0F | P_BIT(0x10) = 0x1F
+}
+
+TEST(TINY_FD_ABM, ABM_PFBit_IFramesNoPBit)
+{
+    // I-frames should NOT have P bit set in ABM mode
+    establishConnection();
+    int result = tiny_fd_send_packet_to(handle, TINY_FD_PRIMARY_ADDR, (const void *)"\xAA", 1, 1000);
+    CHECK_EQUAL(TINY_SUCCESS, result);
+    int len = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
+    CHECK(len > 0);
+    // I-frame control: N(R)=0, N(S)=0, no P bit = 0x00
+    CHECK_EQUAL(0x00, outBuffer[2] & 0x10); // P bit should NOT be set
+}
+
+TEST(TINY_FD_ABM, ABM_PFBit_RRResponseNoPBit)
+{
+    // RR response after receiving I-frame should NOT have P bit in ABM
+    establishConnection();
+    auto read_result = tiny_fd_on_rx_data(handle, (uint8_t *)"\x7E\x03\x00\x11\x7E", 5); // I-frame
+    CHECK_EQUAL(TINY_SUCCESS, read_result);
+    int len = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
+    CHECK(len > 0);
+    // RR control: N(R)=1, RR, no P bit = 0x21
+    CHECK_EQUAL(0x00, outBuffer[2] & 0x10); // P bit should NOT be set
+    CHECK_EQUAL(0x21, outBuffer[2]); // RR with N(R)=1, no P
+}
+
+TEST(TINY_FD_ABM, ABM_PFBit_PropagatesPToFInResponse)
+{
+    // When RR command has P=1, response should have F=1
+    establishConnection();
+    // RR with CR bit and P bit: address=0x03, control=0x11 (P=1, RR, N(R)=0)
+    auto read_result = tiny_fd_on_rx_data(handle, (uint8_t *)"\x7E\x03\x11\x7E", 4);
+    CHECK_EQUAL(TINY_SUCCESS, read_result);
+    int len = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
+    CHECK_EQUAL(4, len);
+    CHECK_EQUAL(0x11, outBuffer[2]); // RR response with F=1 (propagated from P=1)
+
+    // Now send RR command WITHOUT P bit: address=0x03, control=0x01 (P=0, RR, N(R)=0)
+    read_result = tiny_fd_on_rx_data(handle, (uint8_t *)"\x7E\x03\x01\x7E", 4);
+    CHECK_EQUAL(TINY_SUCCESS, read_result);
+    len = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
+    CHECK_EQUAL(4, len);
+    CHECK_EQUAL(0x01, outBuffer[2]); // RR response with F=0 (no P in command)
+}
+
+// ==========================================================================
+// UI (Unnumbered Information) Frame Tests
+// ==========================================================================
+
+TEST(TINY_FD_ABM, ABM_UIFrameSend)
+{
+    // UI frames can be sent even when disconnected (connectionless)
+    int result = tiny_fd_send_ui_packet(handle, (const void *)"\xDE\xAD", 2);
+    CHECK_EQUAL(TINY_SUCCESS, result);
+    int len = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
+    CHECK_EQUAL(6, len); // flag + addr + control + 2 data bytes + flag
+    CHECK_EQUAL(0x7E, outBuffer[0]); // Flag
+    CHECK_EQUAL(0x01, outBuffer[1]); // Address field
+    CHECK_EQUAL(0x13, outBuffer[2]); // UI control = 0x03 | P_BIT(0x10) = 0x13 (U-frame gets P bit)
+    CHECK_EQUAL(0xDE, outBuffer[3]); // Data byte 1
+    CHECK_EQUAL(0xAD, outBuffer[4]); // Data byte 2
+    CHECK_EQUAL(0x7E, outBuffer[5]); // Flag
+}
+
+// Static callback state for UI receive tests
+static bool s_ui_received = false;
+static uint8_t s_ui_data[16] = {};
+static int s_ui_len = 0;
+
+static void ui_read_callback(void *, uint8_t, uint8_t *buf, int len)
+{
+    s_ui_received = true;
+    s_ui_len = len;
+    if ( len > 0 && len <= (int)sizeof(s_ui_data) )
+    {
+        memcpy(s_ui_data, buf, len);
+    }
+}
+
+TEST(TINY_FD_ABM, ABM_UIFrameReceiveConnected)
+{
+    // UI frames can be received when connected
+    s_ui_received = false;
+    s_ui_len = 0;
+    memset(s_ui_data, 0, sizeof(s_ui_data));
+
+    // Close and reinitialize with UI callback
+    tiny_fd_close(handle);
+    tiny_fd_init_t init{};
+    init.pdata = this;
+    init.on_connect_event_cb = __onConnect;
+    init.on_read_cb = onRead;
+    init.on_send_cb = onSend;
+    init.log_frame_cb = logFrame;
+    init.buffer = inBuffer.data();
+    init.buffer_size = inBuffer.size();
+    init.window_frames = 7;
+    init.send_timeout = 1000;
+    init.retry_timeout = 100;
+    init.retries = 2;
+    init.mode = TINY_FD_MODE_ABM;
+    init.peers_count = 1;
+    init.crc_type = HDLC_CRC_OFF;
+    init.on_read_ui_cb = ui_read_callback;
+    auto result = tiny_fd_init(&handle, &init);
+    CHECK_EQUAL(TINY_SUCCESS, result);
+
+    establishConnection();
+
+    // Send UI frame: address=0x01, control=0x03 (UI), data=0xBE 0xEF
+    auto read_result = tiny_fd_on_rx_data(handle, (uint8_t *)"\x7E\x01\x03\xBE\xEF\x7E", 6);
+    CHECK_EQUAL(TINY_SUCCESS, read_result);
+    CHECK(s_ui_received);
+    CHECK_EQUAL(2, s_ui_len);
+    CHECK_EQUAL(0xBE, s_ui_data[0]);
+    CHECK_EQUAL(0xEF, s_ui_data[1]);
+}
+
+TEST(TINY_FD_ABM, ABM_UIFrameReceiveDisconnected)
+{
+    // UI frames can be received even when disconnected (connectionless)
+    s_ui_received = false;
+    s_ui_len = 0;
+
+    // Close and reinitialize with UI callback
+    tiny_fd_close(handle);
+    tiny_fd_init_t init{};
+    init.pdata = this;
+    init.on_connect_event_cb = __onConnect;
+    init.on_read_cb = onRead;
+    init.on_send_cb = onSend;
+    init.log_frame_cb = logFrame;
+    init.buffer = inBuffer.data();
+    init.buffer_size = inBuffer.size();
+    init.window_frames = 7;
+    init.send_timeout = 1000;
+    init.retry_timeout = 100;
+    init.retries = 2;
+    init.mode = TINY_FD_MODE_ABM;
+    init.peers_count = 1;
+    init.crc_type = HDLC_CRC_OFF;
+    init.on_read_ui_cb = ui_read_callback;
+    auto result = tiny_fd_init(&handle, &init);
+    CHECK_EQUAL(TINY_SUCCESS, result);
+
+    // Don't establish connection - send UI while disconnected
+    auto read_result = tiny_fd_on_rx_data(handle, (uint8_t *)"\x7E\x01\x03\x42\x7E", 5);
+    CHECK_EQUAL(TINY_SUCCESS, read_result);
+    CHECK(s_ui_received);
+    CHECK_EQUAL(1, s_ui_len);
+    CHECK_EQUAL(0x42, s_ui_data[0]);
 }
