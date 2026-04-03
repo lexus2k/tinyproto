@@ -147,19 +147,15 @@ static void on_frame_read(void *user_data, uint8_t *data, int len)
     {
         __on_u_frame_read(handle, peer, data, len);
     }
-    // If I-frame is received when connection is not established, we should ignore it
-    // And let's attempt to initiate new connection
+    // If I-frame is received when connection is not established, send DM per HDLC ABM spec
     else if ( handle->peers[peer].state != TINY_FD_STATE_CONNECTED && handle->peers[peer].state != TINY_FD_STATE_DISCONNECTING )
     {
-        // Should send DM in case we receive here S- or I-frames.
-        // If connection is not established, we should ignore all frames except U-frames
-        LOG(TINY_LOG_CRIT, "[%p] Connection is not established, connecting\n", handle);
+        LOG(TINY_LOG_CRIT, "[%p] Connection is not established, sending DM\n", handle);
         tiny_frame_header_t frame = {
-            .address = __peer_to_address_field( handle, peer ) | HDLC_CR_BIT,
-            .control = (handle->mode == TINY_FD_MODE_NRM ? HDLC_U_FRAME_TYPE_SNRM : HDLC_U_FRAME_TYPE_SABM) | HDLC_U_FRAME_BITS,
+            .address = __peer_to_address_field( handle, peer ),
+            .control = HDLC_U_FRAME_TYPE_DM | HDLC_U_FRAME_BITS,
         };
         __put_u_s_frame_to_tx_queue(handle, TINY_FD_QUEUE_U_FRAME, &frame, 2);
-        handle->peers[peer].state = TINY_FD_STATE_CONNECTING;
     }
     else if ( (control & HDLC_I_FRAME_MASK) == HDLC_I_FRAME_BITS )
     {

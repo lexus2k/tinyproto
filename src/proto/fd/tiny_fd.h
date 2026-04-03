@@ -107,9 +107,11 @@ extern "C"
     typedef enum
     {
         TINY_FD_FRAME_SUBTYPE_RR = 0x00, ///< S-frame subtype RR
+        TINY_FD_FRAME_SUBTYPE_RNR = 0x04, ///< S-frame subtype RNR
         TINY_FD_FRAME_SUBTYPE_REJ = 0x08, ///< S-frame subtype REJ
 
         TINY_FD_FRAME_SUBTYPE_UA = 0x60, ///< U-frame subtype UA
+        TINY_FD_FRAME_SUBTYPE_DM = 0x0C, ///< U-frame subtype DM
         TINY_FD_FRAME_SUBTYPE_FRMR = 0x84, ///< U-frame subtype FRMR
         TINY_FD_FRAME_SUBTYPE_RSET = 0x8C, ///< U-frame subtype RSET
         TINY_FD_FRAME_SUBTYPE_SABM = 0x2C, ///< U-frame subtype SABM

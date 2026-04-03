@@ -89,12 +89,14 @@ enum
 #define HDLC_S_FRAME_MASK 0x03
 #define HDLC_S_FRAME_TYPE_REJ 0x08
 #define HDLC_S_FRAME_TYPE_RR 0x00
+#define HDLC_S_FRAME_TYPE_RNR 0x04
 #define HDLC_S_FRAME_TYPE_MASK 0x0C
 
 #define HDLC_U_FRAME_BITS 0x03
 #define HDLC_U_FRAME_MASK 0x03
 // 2 lower bits of the command id's are zero, because they are covered by U_FRAME_BITS
 #define HDLC_U_FRAME_TYPE_UA 0x60
+#define HDLC_U_FRAME_TYPE_DM 0x0C
 #define HDLC_U_FRAME_TYPE_FRMR 0x84
 #define HDLC_U_FRAME_TYPE_RSET 0x8C
 #define HDLC_U_FRAME_TYPE_SABM 0x2C

@@ -123,7 +123,7 @@ static int __on_s_frame_read(tiny_fd_handle_t handle, uint8_t peer, void *data, 
     uint8_t nr = control >> 5;
     int result = TINY_ERR_FAILED;
     LOG(TINY_LOG_INFO, "[%p] Receiving S-Frame N(R)=%02X, type=%s with address [%02X]\n", handle, nr,
-        ((control >> 2) & 0x03) == 0x00 ? "RR" : "REJ", ((uint8_t *)data)[0]);
+        ((control >> 2) & 0x03) == 0x00 ? "RR" : ((control >> 2) & 0x03) == 0x01 ? "RNR" : "REJ", ((uint8_t *)data)[0]);
     if ( (control & HDLC_S_FRAME_TYPE_MASK) == HDLC_S_FRAME_TYPE_REJ )
     {
         // Confirm all previously sent frames up to received N(R)
@@ -147,6 +147,12 @@ static int __on_s_frame_read(tiny_fd_handle_t handle, uint8_t peer, void *data, 
                 __put_u_s_frame_to_tx_queue(handle, TINY_FD_QUEUE_S_FRAME, &frame, 2);
             }
         }
+    }
+    else if ( (control & HDLC_S_FRAME_TYPE_MASK) == HDLC_S_FRAME_TYPE_RNR )
+    {
+        // Confirm all previously sent frames up to received N(R), but peer is busy — do not send more
+        __confirm_sent_frames(handle, peer, nr);
+        LOG(TINY_LOG_WRN, "[%p] Peer signalled RNR (busy), pausing I-frame transmission\n", handle);
     }
     return result;
 }
@@ -183,13 +189,31 @@ static int __on_u_frame_read(tiny_fd_handle_t handle, uint8_t peer, void *data, 
     }
     else if ( type == HDLC_U_FRAME_TYPE_RSET )
     {
-        // resets N(R) = 0 in secondary, resets N(S) = 0 in primary
-        // expected answer UA
+        // RSET resets sequence numbers and expects UA response
+        LOG(TINY_LOG_WRN, "[%p] RSET received, resetting sequence numbers\n", handle);
+        __reset_i_queue_control(&handle->peers[peer].i_queue_control);
+        handle->peers[peer].sent_nr = 0;
+        handle->peers[peer].sent_reject = 0;
+        tiny_frame_header_t frame = {
+            .address = __peer_to_address_field( handle, peer ),
+            .control = HDLC_U_FRAME_TYPE_UA | HDLC_U_FRAME_BITS,
+        };
+        __put_u_s_frame_to_tx_queue(handle, TINY_FD_QUEUE_U_FRAME, &frame, 2);
     }
     else if ( type == HDLC_U_FRAME_TYPE_FRMR )
     {
-        // response of secondary in case of protocol errors: invalid control field, invalid N(R),
-        // information field too long or not expected in this frame
+        // FRMR indicates protocol error on remote side — initiate link reset via SABM/SNRM
+        LOG(TINY_LOG_ERR, "[%p] FRMR received, initiating link reset\n", handle);
+        if ( handle->peers[peer].state != TINY_FD_STATE_DISCONNECTED )
+        {
+            __switch_to_disconnected_state(handle, peer);
+        }
+        tiny_frame_header_t sabm_frame = {
+            .address = __peer_to_address_field( handle, peer ) | HDLC_CR_BIT,
+            .control = (handle->mode == TINY_FD_MODE_NRM ? HDLC_U_FRAME_TYPE_SNRM : HDLC_U_FRAME_TYPE_SABM) | HDLC_U_FRAME_BITS,
+        };
+        __put_u_s_frame_to_tx_queue(handle, TINY_FD_QUEUE_U_FRAME, &sabm_frame, 2);
+        handle->peers[peer].state = TINY_FD_STATE_CONNECTING;
     }
     else if ( type == HDLC_U_FRAME_TYPE_UA )
     {
@@ -199,6 +223,15 @@ static int __on_u_frame_read(tiny_fd_handle_t handle, uint8_t peer, void *data, 
             __switch_to_connected_state(handle, peer);
         }
         else if ( handle->peers[peer].state == TINY_FD_STATE_DISCONNECTING )
+        {
+            __switch_to_disconnected_state(handle, peer);
+        }
+    }
+    else if ( type == HDLC_U_FRAME_TYPE_DM )
+    {
+        // DM indicates the remote side is in disconnected mode
+        LOG(TINY_LOG_WRN, "[%p] DM received, peer is in disconnected mode\n", handle);
+        if ( handle->peers[peer].state != TINY_FD_STATE_DISCONNECTED )
         {
             __switch_to_disconnected_state(handle, peer);
         }

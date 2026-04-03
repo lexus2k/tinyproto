@@ -238,17 +238,17 @@ TEST(TINY_FD_ABM, ABM_RecieveOutOfOrderIFrames)
     CHECK_EQUAL(0x7E, outBuffer[7]); // Flag
 }
 
-TEST(TINY_FD_ABM, ABM_SendSABMOnIFrameIfDisconnected)
+TEST(TINY_FD_ABM, ABM_SendDMOnIFrameIfDisconnected)
 {
-    // If we are disconnected, we should send SABM frame on I-frame
+    // Per HDLC ABM spec, if we are disconnected and receive I-frame, send DM (Disconnect Mode)
     auto read_result = tiny_fd_on_rx_data(handle, (uint8_t *)"\x7E\x03\x00\x11\x7E", 5); // I-frame in order
     CHECK_EQUAL(TINY_SUCCESS, read_result);
     auto len = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
     CHECK_EQUAL(4, len);
-    // Check SABM frame
+    // DM control = (0x0C | 0x03) | P_BIT = 0x0F | 0x10 = 0x1F
     CHECK_EQUAL(0x7E, outBuffer[0]); // Flag
-    CHECK_EQUAL(0x03, outBuffer[1]); // Address field - CR bit must be cleared
-    CHECK_EQUAL(0x3F, outBuffer[2]); // SABM packet
+    CHECK_EQUAL(0x01, outBuffer[1]); // Address field - CR bit cleared (response)
+    CHECK_EQUAL(0x1F, outBuffer[2]); // DM packet with P/F bit
     CHECK_EQUAL(0x7E, outBuffer[3]); // Flag
 }
 
@@ -419,4 +419,97 @@ TEST(TINY_FD_ABM, ABM_CheckReceiveReadyWithCommandBitCleared)
     CHECK_EQUAL(TINY_SUCCESS, read_result);
     int len = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
     CHECK_EQUAL(0, len); // We should have sent RR frame
+}
+
+TEST(TINY_FD_ABM, ABM_SendDMOnSFrameIfDisconnected)
+{
+    // Per HDLC ABM spec, if we are disconnected and receive S-frame, send DM
+    // RR frame with N(R)=0: control = 0x01
+    auto read_result = tiny_fd_on_rx_data(handle, (uint8_t *)"\x7E\x03\x01\x7E", 4); // RR S-frame
+    CHECK_EQUAL(TINY_SUCCESS, read_result);
+    auto len = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
+    CHECK_EQUAL(4, len);
+    // DM control = (0x0C | 0x03) | P_BIT = 0x0F | 0x10 = 0x1F
+    CHECK_EQUAL(0x7E, outBuffer[0]); // Flag
+    CHECK_EQUAL(0x01, outBuffer[1]); // Address field - CR bit cleared (response)
+    CHECK_EQUAL(0x1F, outBuffer[2]); // DM packet with P/F bit
+    CHECK_EQUAL(0x7E, outBuffer[3]); // Flag
+}
+
+TEST(TINY_FD_ABM, ABM_FRMRReceiveTriggersReconnect)
+{
+    // FRMR should trigger disconnection and SABM reconnection attempt
+    establishConnection();
+    CHECK(connected);
+    // Send FRMR frame: control = HDLC_U_FRAME_TYPE_FRMR | HDLC_U_FRAME_BITS = 0x84 | 0x03 = 0x87
+    auto read_result = tiny_fd_on_rx_data(handle, (uint8_t *)"\x7E\x01\x87\x00\x00\x7E", 6); // FRMR with 2 info bytes
+    CHECK_EQUAL(TINY_SUCCESS, read_result);
+    CHECK(!connected); // Should have disconnected
+    // Should get SABM reconnection attempt
+    auto len = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
+    CHECK_EQUAL(4, len);
+    CHECK_EQUAL(0x7E, outBuffer[0]); // Flag
+    CHECK_EQUAL(0x03, outBuffer[1]); // Address field - CR bit set (command)
+    CHECK_EQUAL(0x3F, outBuffer[2]); // SABM packet (0x2C | 0x13 with P bit = 0x2F | 0x10 = 0x3F)
+    CHECK_EQUAL(0x7E, outBuffer[3]); // Flag
+}
+
+TEST(TINY_FD_ABM, ABM_RSETResetsSequenceNumbers)
+{
+    establishConnection();
+    // Send some I-frames to advance sequence numbers
+    auto read_result = tiny_fd_on_rx_data(handle, (uint8_t *)"\x7E\x03\x00\x11\x7E", 5); // I-frame N(S)=0
+    CHECK_EQUAL(TINY_SUCCESS, read_result);
+    // Drain RR response
+    int len = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
+    CHECK(len > 0);
+    // Now send RSET: control = HDLC_U_FRAME_TYPE_RSET | HDLC_U_FRAME_BITS = 0x8C | 0x03 = 0x8F
+    read_result = tiny_fd_on_rx_data(handle, (uint8_t *)"\x7E\x03\x8F\x7E", 4); // RSET frame
+    CHECK_EQUAL(TINY_SUCCESS, read_result);
+    // Should respond with UA
+    len = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
+    CHECK_EQUAL(4, len);
+    CHECK_EQUAL(0x7E, outBuffer[0]); // Flag
+    CHECK_EQUAL(0x01, outBuffer[1]); // Address field - CR bit cleared (response)
+    CHECK_EQUAL(0x73, outBuffer[2]); // UA packet
+    CHECK_EQUAL(0x7E, outBuffer[3]); // Flag
+    // After RSET, send I-frame N(S)=0 again — should succeed since V(R) was reset to 0
+    read_result = tiny_fd_on_rx_data(handle, (uint8_t *)"\x7E\x03\x00\x22\x7E", 5); // I-frame N(S)=0
+    CHECK_EQUAL(TINY_SUCCESS, read_result);
+    len = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
+    CHECK(len > 0);
+    // Should get RR with N(R)=1 confirming the frame was accepted
+    CHECK_EQUAL(0x7E, outBuffer[0]); // Flag
+    CHECK_EQUAL(0x01, outBuffer[1]); // Address field
+    CHECK_EQUAL(0x31, outBuffer[2]); // RR with N(R)=1
+    CHECK_EQUAL(0x7E, outBuffer[3]); // Flag
+}
+
+TEST(TINY_FD_ABM, ABM_RNRPausesTransmission)
+{
+    establishConnection();
+    // Send I-frame first to advance sequence
+    auto read_result = tiny_fd_on_rx_data(handle, (uint8_t *)"\x7E\x03\x00\x11\x7E", 5); // I-frame
+    CHECK_EQUAL(TINY_SUCCESS, read_result);
+    // Drain RR
+    int len = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
+    CHECK(len > 0);
+    // Send RNR S-frame: control = HDLC_S_FRAME_BITS | HDLC_S_FRAME_TYPE_RNR | (N(R)<<5)
+    // = 0x01 | 0x04 | (1<<5) = 0x25
+    read_result = tiny_fd_on_rx_data(handle, (uint8_t *)"\x7E\x03\x25\x7E", 4); // RNR with N(R)=1
+    CHECK_EQUAL(TINY_SUCCESS, read_result);
+    // RNR should be accepted without error (confirms N(R)=1)
+    // No response frame should be generated (RNR doesn't have CR bit set as command here)
+    len = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
+    CHECK_EQUAL(0, len);
+}
+
+TEST(TINY_FD_ABM, ABM_DMReceiveDisconnects)
+{
+    establishConnection();
+    CHECK(connected);
+    // Receive DM from peer: control = HDLC_U_FRAME_TYPE_DM | HDLC_U_FRAME_BITS = 0x0C | 0x03 = 0x0F
+    auto read_result = tiny_fd_on_rx_data(handle, (uint8_t *)"\x7E\x01\x0F\x7E", 4); // DM frame
+    CHECK_EQUAL(TINY_SUCCESS, read_result);
+    CHECK(!connected); // Should have disconnected
 }

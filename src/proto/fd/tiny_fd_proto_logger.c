@@ -116,6 +116,7 @@ static const char *__get_frame_subtype_str(uint8_t control)
         switch (control & HDLC_S_FRAME_TYPE_MASK)
         {
             case HDLC_S_FRAME_TYPE_RR:  return "  RR";
+            case HDLC_S_FRAME_TYPE_RNR: return " RNR";
             case HDLC_S_FRAME_TYPE_REJ: return " REJ";
             default:                    return " UNK";
         }
@@ -123,6 +124,7 @@ static const char *__get_frame_subtype_str(uint8_t control)
     switch (control & HDLC_U_FRAME_TYPE_MASK)
     {
         case HDLC_U_FRAME_TYPE_UA:   return "  UA";
+        case HDLC_U_FRAME_TYPE_DM:   return "  DM";
         case HDLC_U_FRAME_TYPE_FRMR: return "FRMR";
         case HDLC_U_FRAME_TYPE_RSET: return "RSET";
         case HDLC_U_FRAME_TYPE_SABM: return "SABM";
