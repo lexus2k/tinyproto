@@ -174,6 +174,22 @@ static int __on_u_frame_read(tiny_fd_handle_t handle, uint8_t peer, void *data, 
     uint8_t type = control & HDLC_U_FRAME_TYPE_MASK;
     int result = TINY_ERR_FAILED;
     LOG(TINY_LOG_INFO, "[%p] Receiving U-Frame type=%02X with address [%02X]\n", handle, type, ((uint8_t *)data)[0]);
+    // In disconnected state, only accept connection setup (SABM/SNRM) and connectionless (UI) frames.
+    // Respond with DM to commands; silently ignore responses.
+    if ( handle->peers[peer].state == TINY_FD_STATE_DISCONNECTED &&
+         type != HDLC_U_FRAME_TYPE_SABM && type != HDLC_U_FRAME_TYPE_SNRM && type != HDLC_U_FRAME_TYPE_UI )
+    {
+        LOG(TINY_LOG_WRN, "[%p] Ignoring U-frame type=%02X in disconnected state\n", handle, type);
+        if ( ((uint8_t *)data)[0] & HDLC_CR_BIT )
+        {
+            tiny_frame_header_t frame = {
+                .address = __peer_to_address_field( handle, peer ),
+                .control = HDLC_U_FRAME_TYPE_DM | HDLC_U_FRAME_BITS,
+            };
+            __put_u_s_frame_to_tx_queue(handle, TINY_FD_QUEUE_U_FRAME, &frame, 2);
+        }
+        return result;
+    }
     if ( type == HDLC_U_FRAME_TYPE_SABM || type == HDLC_U_FRAME_TYPE_SNRM )
     {
         tiny_frame_header_t frame = {

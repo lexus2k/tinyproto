@@ -41,6 +41,9 @@ TEST_GROUP(TINY_FD_NRM)
     void setup()
     {
         connected = 0;
+        rxLen = 0;
+        rxCount = 0;
+        memset(rxData, 0, sizeof(rxData));
         tiny_fd_init_t init{};
         init.pdata = this;
         init.addr = TINY_FD_PRIMARY_ADDR; // Primary station address
@@ -68,7 +71,13 @@ TEST_GROUP(TINY_FD_NRM)
     }
 
     void onConnect(uint8_t, bool status) { connected = connected + (status ? 1: -1); }
-    void onRead(uint8_t, uint8_t *, int) { }
+    void onRead(uint8_t, uint8_t *buf, int len) {
+        if ( len > 0 && rxLen + len <= (int)sizeof(rxData) ) {
+            memcpy(rxData + rxLen, buf, len);
+            rxLen += len;
+        }
+        rxCount++;
+    }
     void onSend(uint8_t, const uint8_t *, int) { }
 
     static void __onConnect(void *udata, uint8_t address, bool connected)
@@ -106,6 +115,9 @@ TEST_GROUP(TINY_FD_NRM)
 
     tiny_fd_handle_t handle = nullptr;
     int connected = 0;
+    uint8_t rxData[256]{};
+    int rxLen = 0;
+    int rxCount = 0;
     std::array<uint8_t, 1024> inBuffer{};
     std::array<uint8_t, 1024> outBuffer{};
     std::function<void(tiny_fd_handle_t, tiny_fd_frame_direction_t,
@@ -214,7 +226,6 @@ TEST(TINY_FD_NRM, NRM_SecondaryDisconnection)
     CHECK_EQUAL(0, connected); // Connection should be closed
 }
 
-#if 0
 TEST(TINY_FD_NRM, NRM_DisconnectedState_PrimaryIgnoresAllFramesExcept_SNRM)
 {
     tiny_fd_register_peer(handle, 0x01);
@@ -229,17 +240,285 @@ TEST(TINY_FD_NRM, NRM_DisconnectedState_PrimaryIgnoresAllFramesExcept_SNRM)
     CHECK_EQUAL(TINY_SUCCESS, read_result);
     CHECK_EQUAL(0, connected); // Connection should not be established
 
-    // Now send SNRM frame from secondary station to primary station
-    read_result = tiny_fd_on_rx_data(handle, (uint8_t *)"\x7E\x05\x93\x7E", 4); // SNRM frame
+    // Now send SNRM frame from secondary station to primary station (CR bit set = command)
+    read_result = tiny_fd_on_rx_data(handle, (uint8_t *)"\x7E\x07\x93\x7E", 4); // SNRM frame
     CHECK_EQUAL(TINY_SUCCESS, read_result);
     int len = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
     CHECK_EQUAL(4, len);
     // Check UA frame
-    // UA frame should be: 0x7E 0x03 0x00 0x7E
     CHECK_EQUAL(0x7E, outBuffer[0]); // Flag
-    CHECK_EQUAL(0x05, outBuffer[1]); // Address field
-    CHECK_EQUAL(0x63, outBuffer[2]); // UA packet without poll
+    CHECK_EQUAL(0x05, outBuffer[1]); // Address field (response, no CR)
+    CHECK_EQUAL(0x73, outBuffer[2]); // UA packet with P/F (NRM always sets P/F)
     CHECK_EQUAL(0x7E, outBuffer[3]); // Flag
-    CHECK_EQUAL(1, connected); // Connection should be established   
+    CHECK_EQUAL(1, connected); // Connection should be established
 }
-#endif // 0
+
+TEST(TINY_FD_NRM, NRM_PrimaryToSecondary_SingleIFrame)
+{
+    tiny_fd_register_peer(handle, 0x01);
+    tiny_fd_register_peer(handle, 0x02);
+    establishConnection(0x01);
+    establishConnection(0x02);
+    // After establishing both, next_peer=0, marker released
+    // Give marker back by injecting RR+F from peer 1
+    auto result = tiny_fd_on_rx_data(handle, (uint8_t *)"\x7E\x05\x11\x7E", 4);
+    CHECK_EQUAL(TINY_SUCCESS, result);
+
+    // Queue 1 I-frame for peer 1
+    uint8_t payload[] = {'A'};
+    result = tiny_fd_send_to(handle, 0x01, payload, 1, 100);
+    CHECK(result > 0);
+
+    // Get TX data — single I-frame with P bit (last and only frame)
+    int len = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
+    CHECK_EQUAL(5, len);
+    CHECK_EQUAL(0x7E, outBuffer[0]); // Flag
+    CHECK_EQUAL(0x05, outBuffer[1]); // Address (peer 1, no CR on I-frames)
+    CHECK_EQUAL(0x10, outBuffer[2]); // I(0,0) with P bit
+    CHECK_EQUAL('A', outBuffer[3]);  // Payload
+    CHECK_EQUAL(0x7E, outBuffer[4]); // Flag
+}
+
+TEST(TINY_FD_NRM, NRM_PrimaryToSecondary_MultiplIFrames_PFOnLastOnly)
+{
+    tiny_fd_register_peer(handle, 0x01);
+    tiny_fd_register_peer(handle, 0x02);
+    establishConnection(0x01);
+    establishConnection(0x02);
+    // Give marker back
+    auto result = tiny_fd_on_rx_data(handle, (uint8_t *)"\x7E\x05\x11\x7E", 4);
+    CHECK_EQUAL(TINY_SUCCESS, result);
+
+    // Queue 2 I-frames for peer 1
+    uint8_t data1[] = {'A'};
+    uint8_t data2[] = {'B'};
+    result = tiny_fd_send_to(handle, 0x01, data1, 1, 100);
+    CHECK(result > 0);
+    result = tiny_fd_send_to(handle, 0x01, data2, 1, 100);
+    CHECK(result > 0);
+
+    // First call: first I-frame WITHOUT P bit (more frames pending)
+    int len = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
+    CHECK_EQUAL(5, len);
+    CHECK_EQUAL(0x7E, outBuffer[0]);
+    CHECK_EQUAL(0x05, outBuffer[1]); // Address
+    CHECK_EQUAL(0x00, outBuffer[2]); // I(0,0) NO P bit
+    CHECK_EQUAL('A', outBuffer[3]);
+    CHECK_EQUAL(0x7E, outBuffer[4]);
+
+    // Second call: second I-frame WITH P bit (last frame)
+    len = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
+    CHECK_EQUAL(5, len);
+    CHECK_EQUAL(0x7E, outBuffer[0]);
+    CHECK_EQUAL(0x05, outBuffer[1]); // Address
+    CHECK_EQUAL(0x12, outBuffer[2]); // I(1,0) WITH P bit
+    CHECK_EQUAL('B', outBuffer[3]);
+    CHECK_EQUAL(0x7E, outBuffer[4]);
+}
+
+TEST(TINY_FD_NRM, NRM_SecondaryToRrimary_IFrameReceive)
+{
+    tiny_fd_register_peer(handle, 0x01);
+    tiny_fd_register_peer(handle, 0x02);
+    establishConnection(0x01);
+    establishConnection(0x02);
+
+    // Inject I-frame+F from peer 1: N(S)=0, N(R)=0, F=1, payload='X'
+    // Address 0x05 (no CR = response from secondary), control 0x10 (I(0,0)+F)
+    const uint8_t iframe[] = {0x7E, 0x05, 0x10, 'X', 0x7E};
+    auto result = tiny_fd_on_rx_data(handle, iframe, sizeof(iframe));
+    CHECK_EQUAL(TINY_SUCCESS, result);
+
+    // Verify data received via callback
+    CHECK_EQUAL(1, rxCount);
+    CHECK_EQUAL(1, rxLen);
+    CHECK_EQUAL('X', rxData[0]);
+
+    // Primary should send RR to acknowledge (N(R)=1, P/F bit set)
+    int len = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
+    CHECK_EQUAL(4, len);
+    CHECK_EQUAL(0x7E, outBuffer[0]);
+    CHECK_EQUAL(0x05, outBuffer[1]); // Address (no CR on response RR)
+    CHECK_EQUAL(0x31, outBuffer[2]); // RR, N(R)=1, P/F=1 (S-frame always gets P/F)
+    CHECK_EQUAL(0x7E, outBuffer[3]);
+}
+
+TEST(TINY_FD_NRM, NRM_MarkerTimeoutRecovery)
+{
+    tiny_fd_register_peer(handle, 0x01);
+    tiny_fd_register_peer(handle, 0x02);
+    establishConnection(0x01);
+    establishConnection(0x02);
+    // Marker released after connection. Don't inject any response.
+    // Wait for retry_timeout (100ms) — tiny_fd_get_tx_data waits internally
+    // First call: waits for marker, times out, reclaims marker, queues idle RR
+    int len = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
+    // May return 0 (marker reclaimed but frame not sent yet) or >0
+    if ( len == 0 )
+    {
+        // Second call: sends the queued RR
+        len = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
+    }
+    CHECK(len > 0);
+    // Should be an RR poll or SNRM (depending on peer state after timeout)
+    CHECK_EQUAL(0x7E, outBuffer[0]);
+    CHECK_EQUAL(0x7E, outBuffer[len - 1]);
+}
+
+TEST(TINY_FD_NRM, NRM_PrimaryDisconnect)
+{
+    tiny_fd_register_peer(handle, 0x01);
+    tiny_fd_register_peer(handle, 0x02);
+    establishConnection(0x01);
+    establishConnection(0x02);
+    CHECK_EQUAL(2, connected);
+
+    // Primary initiates disconnect (currently disconnects peer 0)
+    auto result = tiny_fd_disconnect(handle);
+    CHECK_EQUAL(TINY_SUCCESS, result);
+
+    // Give marker back to send DISC
+    result = tiny_fd_on_rx_data(handle, (uint8_t *)"\x7E\x05\x11\x7E", 4); // RR+F from peer 1
+    CHECK_EQUAL(TINY_SUCCESS, result);
+
+    // Get DISC frame
+    int len = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
+    CHECK_EQUAL(4, len);
+    CHECK_EQUAL(0x7E, outBuffer[0]);
+    CHECK_EQUAL(0x07, outBuffer[1]); // Address with CR bit (DISC is a command)
+    CHECK_EQUAL(0x53, outBuffer[2]); // DISC + P/F
+    CHECK_EQUAL(0x7E, outBuffer[3]);
+
+    // Secondary responds with UA+F
+    result = tiny_fd_on_rx_data(handle, (uint8_t *)"\x7E\x05\x73\x7E", 4); // UA from peer 1
+    CHECK_EQUAL(TINY_SUCCESS, result);
+    CHECK_EQUAL(1, connected); // One connection closed
+}
+
+TEST(TINY_FD_NRM, NRM_DMResponseWhenDisconnected)
+{
+    tiny_fd_register_peer(handle, 0x01);
+    // Peer is disconnected. Send a command U-frame (DISC+P with CR bit) from that peer.
+    // Primary should respond with DM since peer is disconnected.
+    const uint8_t disc_frame[] = {0x7E, 0x07, 0x53, 0x7E}; // DISC+P from peer 1 (CR=command)
+    auto result = tiny_fd_on_rx_data(handle, disc_frame, sizeof(disc_frame));
+    CHECK_EQUAL(TINY_SUCCESS, result);
+
+    int len = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
+    CHECK_EQUAL(4, len);
+    CHECK_EQUAL(0x7E, outBuffer[0]);
+    CHECK_EQUAL(0x05, outBuffer[1]); // Address (response, no CR)
+    CHECK_EQUAL(0x1F, outBuffer[2]); // DM + F bit
+    CHECK_EQUAL(0x7E, outBuffer[3]);
+}
+
+TEST(TINY_FD_NRM, NRM_RoundRobinPeerSwitching)
+{
+    tiny_fd_register_peer(handle, 0x01);
+    tiny_fd_register_peer(handle, 0x02);
+    establishConnection(0x01);
+    establishConnection(0x02);
+    // After establishing both: next_peer=0, marker released
+
+    // Give marker back
+    auto result = tiny_fd_on_rx_data(handle, (uint8_t *)"\x7E\x05\x11\x7E", 4); // RR+F from peer 1
+    CHECK_EQUAL(TINY_SUCCESS, result);
+
+    // Queue data for both peers
+    uint8_t d1[] = {'A'};
+    uint8_t d2[] = {'X'};
+    result = tiny_fd_send_to(handle, 0x01, d1, 1, 100);
+    CHECK(result > 0);
+    result = tiny_fd_send_to(handle, 0x02, d2, 1, 100);
+    CHECK(result > 0);
+
+    // TX1: I-frame to peer 0 (addr 0x01) with P → marker released, next_peer switches to 1
+    int len = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
+    CHECK_EQUAL(5, len);
+    CHECK_EQUAL(0x05, outBuffer[1]); // Peer 1 address
+    CHECK_EQUAL(0x10, outBuffer[2]); // I(0,0)+P (last frame for this peer)
+    CHECK_EQUAL('A', outBuffer[3]);
+
+    // Peer 0 responds with RR+F, N(R)=1 (confirming receipt of I-frame) → marker captured
+    result = tiny_fd_on_rx_data(handle, (uint8_t *)"\x7E\x05\x31\x7E", 4);
+    CHECK_EQUAL(TINY_SUCCESS, result);
+
+    // TX2: now next_peer=1, send I-frame to peer 1 (addr 0x02) with P
+    len = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
+    CHECK_EQUAL(5, len);
+    CHECK_EQUAL(0x09, outBuffer[1]); // Peer 2 address
+    CHECK_EQUAL(0x10, outBuffer[2]); // I(0,0)+P
+    CHECK_EQUAL('X', outBuffer[3]);
+}
+
+TEST(TINY_FD_NRM, NRM_FRMRRecovery)
+{
+    tiny_fd_register_peer(handle, 0x01);
+    tiny_fd_register_peer(handle, 0x02);
+    establishConnection(0x01);
+    establishConnection(0x02);
+    CHECK_EQUAL(2, connected);
+
+    // Inject FRMR from peer 1 (with F bit to give marker)
+    // FRMR = 0x87 | 0x10 = 0x97, plus 2 info bytes
+    const uint8_t frmr[] = {0x7E, 0x05, 0x97, 0x00, 0x00, 0x7E};
+    auto result = tiny_fd_on_rx_data(handle, frmr, sizeof(frmr));
+    CHECK_EQUAL(TINY_SUCCESS, result);
+    // FRMR should cause disconnection and re-connection attempt
+    CHECK_EQUAL(1, connected); // peer 1 disconnected
+
+    // Primary should send SNRM (not SABM, since NRM mode) to re-establish
+    int len = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
+    CHECK_EQUAL(4, len);
+    CHECK_EQUAL(0x7E, outBuffer[0]);
+    CHECK_EQUAL(0x07, outBuffer[1]); // Address with CR (SNRM is command)
+    CHECK_EQUAL(0x93, outBuffer[2]); // SNRM + P/F
+    CHECK_EQUAL(0x7E, outBuffer[3]);
+
+    // Secondary responds with UA
+    result = tiny_fd_on_rx_data(handle, (uint8_t *)"\x7E\x05\x73\x7E", 4);
+    CHECK_EQUAL(TINY_SUCCESS, result);
+    CHECK_EQUAL(2, connected); // Re-connected
+}
+
+TEST(TINY_FD_NRM, NRM_REJRecovery)
+{
+    tiny_fd_register_peer(handle, 0x01);
+    tiny_fd_register_peer(handle, 0x02);
+    establishConnection(0x01);
+    establishConnection(0x02);
+
+    // Give marker and send an I-frame to peer 0 (addr 0x01)
+    auto result = tiny_fd_on_rx_data(handle, (uint8_t *)"\x7E\x05\x11\x7E", 4); // RR+F
+    CHECK_EQUAL(TINY_SUCCESS, result);
+    uint8_t d1[] = {'A'};
+    result = tiny_fd_send_to(handle, 0x01, d1, 1, 100);
+    CHECK(result > 0);
+    int len = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
+    CHECK_EQUAL(5, len);
+    CHECK_EQUAL(0x10, outBuffer[2]); // I(0,0)+P
+    // After sending with P: marker released, next_peer = 1
+
+    // Peer 0 responds with REJ+F, N(R)=0 (requesting retransmission from 0)
+    result = tiny_fd_on_rx_data(handle, (uint8_t *)"\x7E\x05\x19\x7E", 4);
+    CHECK_EQUAL(TINY_SUCCESS, result);
+    // Marker captured, but next_peer = 1 (round-robin)
+
+    // TX for peer 1: idle RR+P (no data for peer 1)
+    len = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
+    CHECK_EQUAL(4, len);
+    CHECK_EQUAL(0x09, outBuffer[1]); // Peer 2 address
+    // After sending RR+P: marker released, next_peer = 0
+
+    // Peer 1 responds with RR+F → marker captured, next_peer still 0
+    result = tiny_fd_on_rx_data(handle, (uint8_t *)"\x7E\x09\x11\x7E", 4);
+    CHECK_EQUAL(TINY_SUCCESS, result);
+
+    // Now next_peer = 0, and I-frame needs retransmission
+    len = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
+    CHECK_EQUAL(5, len);
+    CHECK_EQUAL(0x05, outBuffer[1]); // Peer 1 address
+    CHECK_EQUAL(0x10, outBuffer[2]); // I(0,0)+P retransmitted
+    CHECK_EQUAL('A', outBuffer[3]);
+}
+

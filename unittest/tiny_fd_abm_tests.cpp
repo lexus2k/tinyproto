@@ -181,11 +181,10 @@ TEST(TINY_FD_ABM, ABM_DisconnectResponseWhenNotConnected)
     CHECK_EQUAL(TINY_SUCCESS, read_result);
     int len = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
     CHECK_EQUAL(4, len);
-    // Check UA frame   
-    // UA frame should be: 0x7E 0x03 0x00 0x7E
+    // Per HDLC spec: DISC when disconnected gets DM response (not UA)
     CHECK_EQUAL(0x7E, outBuffer[0]); // Flag
     CHECK_EQUAL(0x01, outBuffer[1]); // address field - CR bit must be cleared
-    CHECK_EQUAL(0x73, outBuffer[2]); // UA packet
+    CHECK_EQUAL(0x1F, outBuffer[2]); // DM packet with P/F bit
     CHECK_EQUAL(0x7E, outBuffer[3]); // Flag
     CHECK(connected); // Connection should not be changed
 }

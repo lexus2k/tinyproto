@@ -531,7 +531,7 @@ static uint8_t *tiny_fd_get_next_frame_to_send(tiny_fd_handle_t handle, int *len
             ( handle->peers[peer].state == TINY_FD_STATE_DISCONNECTED || handle->peers[peer].state == TINY_FD_STATE_CONNECTING))
         {
             tiny_frame_header_t frame = {
-                .address = address,
+                .address = address | HDLC_CR_BIT,
                 .control = HDLC_U_FRAME_TYPE_SNRM | HDLC_U_FRAME_BITS,
             };
             __put_u_s_frame_to_tx_queue(handle, TINY_FD_QUEUE_S_FRAME, &frame, 2);
@@ -552,8 +552,19 @@ static uint8_t *tiny_fd_get_next_frame_to_send(tiny_fd_handle_t handle, int *len
         tiny_frame_header_t *header = (tiny_frame_header_t *)data;
         if ( handle->mode == TINY_FD_MODE_NRM )
         {
-            // NRM: Always set P/F bit for marker passing
-            header->control |= HDLC_P_BIT;
+            // NRM: P/F on last frame only. S/U frames always get P/F (marker passing).
+            // I-frames get P/F only when no more I-frames remain for this peer.
+            if ( (header->control & HDLC_I_FRAME_MASK) == HDLC_I_FRAME_BITS )
+            {
+                if ( __all_frames_are_sent(&handle->peers[peer].i_queue_control) )
+                {
+                    header->control |= HDLC_P_BIT;
+                }
+            }
+            else
+            {
+                header->control |= HDLC_P_BIT;
+            }
         }
         else
         {
