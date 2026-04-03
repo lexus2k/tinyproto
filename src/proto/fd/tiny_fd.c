@@ -75,6 +75,7 @@ static void __switch_to_connected_state(tiny_fd_handle_t handle, uint8_t peer)
         __reset_i_queue_control(&handle->peers[peer].i_queue_control);
         handle->peers[peer].sent_nr = 0;
         handle->peers[peer].sent_reject = 0;
+        handle->peers[peer].srej_req_mask = 0;
         tiny_fd_queue_reset_for( &handle->frames.i_queue, __peer_to_address_field( handle, peer ) );
         // Reset last arrived frame timestamp on connection.
         // This is required to avoid disconnection on keep alive timeout at the beginning of connection
@@ -107,6 +108,7 @@ static void __switch_to_disconnected_state(tiny_fd_handle_t handle, uint8_t peer
         __reset_i_queue_control(&handle->peers[peer].i_queue_control);
         handle->peers[peer].sent_nr = 0;
         handle->peers[peer].sent_reject = 0;
+        handle->peers[peer].srej_req_mask = 0;
         tiny_fd_queue_reset_for( &handle->frames.i_queue, __peer_to_address_field( handle, peer ) );
         tiny_events_clear(&handle->peers[peer].events, FD_EVENT_CAN_ACCEPT_I_FRAMES);
         LOG(TINY_LOG_CRIT, "[%p] Disconnected\n", handle);
@@ -466,6 +468,30 @@ static uint8_t *tiny_fd_get_next_i_frame(tiny_fd_handle_t handle, int *len, uint
     {
         // If sending of I-frames is not allowed then just exit
         return NULL;
+    }
+    // Check for SREJ-requested selective retransmissions first
+    if ( handle->peers[peer].srej_req_mask != 0 )
+    {
+        for ( uint8_t i = 0; i < 8; i++ )
+        {
+            if ( handle->peers[peer].srej_req_mask & (1 << i) )
+            {
+                ptr = tiny_fd_queue_get_next( &handle->frames.i_queue, TINY_FD_QUEUE_I_FRAME, address, i );
+                handle->peers[peer].srej_req_mask &= ~(1 << i);
+                if ( ptr != NULL )
+                {
+                    data = (uint8_t *)&ptr->header;
+                    *len = ptr->len + sizeof(tiny_frame_header_t);
+                    LOG(TINY_LOG_INFO, "[%p] SREJ retransmit I-Frame N(S)=%02X with address [%02X]\n", handle, i, data[0]);
+                    ptr->header.control &= 0x0F;
+                    ptr->header.control |= ( __i_queue_control_get_next_frame_to_receive(&handle->peers[peer].i_queue_control) << 5);
+                    handle->peers[peer].sent_nr = __i_queue_control_get_next_frame_to_receive(&handle->peers[peer].i_queue_control);
+                    handle->peers[peer].last_sent_i_ts = tiny_millis();
+                }
+                break;
+            }
+        }
+        return data;
     }
     ptr = tiny_fd_queue_get_next( &handle->frames.i_queue, TINY_FD_QUEUE_I_FRAME, address, __i_queue_control_get_next_frame_to_send(&handle->peers[peer].i_queue_control) );
     if ( ptr != NULL )

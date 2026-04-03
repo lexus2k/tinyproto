@@ -694,3 +694,114 @@ TEST(TINY_FD_ABM, ABM_UIFrameReceiveDisconnected)
     CHECK_EQUAL(1, s_ui_len);
     CHECK_EQUAL(0x42, s_ui_data[0]);
 }
+
+// ==========================================================================
+// SREJ (Selective Reject) Tests
+// ==========================================================================
+
+TEST(TINY_FD_ABM, ABM_SREJRetransmitsSingleFrame)
+{
+    establishConnection();
+    // Queue one I-frame
+    int result = tiny_fd_send_packet_to(handle, TINY_FD_PRIMARY_ADDR, (const void *)"\xAA", 1, 1000);
+    CHECK_EQUAL(TINY_SUCCESS, result);
+    // Send the I-frame out
+    int len = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
+    CHECK(len > 0);
+    uint8_t sent_control = outBuffer[2];
+    CHECK_EQUAL(0x00, sent_control & 0x01); // I-frame (bit 0 = 0)
+    CHECK_EQUAL(0x00, (sent_control >> 1) & 0x07); // N(S) = 0
+
+    // Peer sends SREJ for frame 0: address=0x03 (command), control=0x0D (SREJ, N(R)=0)
+    auto read_result = tiny_fd_on_rx_data(handle, (uint8_t *)"\x7E\x03\x0D\x7E", 4);
+    CHECK_EQUAL(TINY_SUCCESS, read_result);
+
+    // Should retransmit frame 0
+    len = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
+    CHECK(len > 0);
+    CHECK_EQUAL(0x00, outBuffer[2] & 0x01); // I-frame
+    CHECK_EQUAL(0x00, (outBuffer[2] >> 1) & 0x07); // N(S) = 0 (retransmitted)
+    CHECK_EQUAL(0xAA, outBuffer[3]); // Original payload preserved
+}
+
+TEST(TINY_FD_ABM, ABM_SREJRetransmitsOnlyRequestedFrame)
+{
+    establishConnection();
+    // Queue two I-frames
+    int result = tiny_fd_send_packet_to(handle, TINY_FD_PRIMARY_ADDR, (const void *)"\xAA", 1, 1000);
+    CHECK_EQUAL(TINY_SUCCESS, result);
+    result = tiny_fd_send_packet_to(handle, TINY_FD_PRIMARY_ADDR, (const void *)"\xBB", 1, 1000);
+    CHECK_EQUAL(TINY_SUCCESS, result);
+
+    // Send both I-frames out
+    int len = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
+    CHECK(len > 0);
+    int len2 = tiny_fd_get_tx_data(handle, outBuffer.data() + len, outBuffer.size() - len, 100);
+    CHECK(len2 > 0);
+
+    // Peer sends SREJ for frame 0 only: control=0x0D (SREJ, N(R)=0)
+    auto read_result = tiny_fd_on_rx_data(handle, (uint8_t *)"\x7E\x03\x0D\x7E", 4);
+    CHECK_EQUAL(TINY_SUCCESS, read_result);
+
+    // Get retransmitted frame - should be only frame 0
+    len = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
+    CHECK(len > 0);
+    CHECK_EQUAL(0x00, (outBuffer[2] >> 1) & 0x07); // N(S) = 0
+
+    // No more frames should be available (frame 1 was NOT retransmitted)
+    len2 = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
+    CHECK_EQUAL(0, len2); // Nothing else to send
+}
+
+TEST(TINY_FD_ABM, ABM_SREJForSecondFrame)
+{
+    establishConnection();
+    // Queue two I-frames
+    int result = tiny_fd_send_packet_to(handle, TINY_FD_PRIMARY_ADDR, (const void *)"\xAA", 1, 1000);
+    CHECK_EQUAL(TINY_SUCCESS, result);
+    result = tiny_fd_send_packet_to(handle, TINY_FD_PRIMARY_ADDR, (const void *)"\xBB", 1, 1000);
+    CHECK_EQUAL(TINY_SUCCESS, result);
+
+    // Send both I-frames out
+    int len = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
+    len += tiny_fd_get_tx_data(handle, outBuffer.data() + len, outBuffer.size() - len, 100);
+
+    // Peer acks frame 0, sends SREJ for frame 1: control=0x2D (SREJ, N(R)=1)
+    // N(R)=1 means: confirmed frame 0, please retransmit frame 1
+    auto read_result = tiny_fd_on_rx_data(handle, (uint8_t *)"\x7E\x03\x2D\x7E", 4);
+    CHECK_EQUAL(TINY_SUCCESS, read_result);
+
+    // Get retransmitted frame - should be frame 1 with payload 0xBB
+    len = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
+    CHECK(len > 0);
+    CHECK_EQUAL(0x01, (outBuffer[2] >> 1) & 0x07); // N(S) = 1
+    CHECK_EQUAL(0xBB, outBuffer[3]); // Frame 1 payload
+}
+
+TEST(TINY_FD_ABM, ABM_REJRetransmitsAllFromNR)
+{
+    // Compare with REJ behavior: REJ retransmits ALL frames from N(R) onward
+    establishConnection();
+    // Queue two I-frames
+    int result = tiny_fd_send_packet_to(handle, TINY_FD_PRIMARY_ADDR, (const void *)"\xAA", 1, 1000);
+    CHECK_EQUAL(TINY_SUCCESS, result);
+    result = tiny_fd_send_packet_to(handle, TINY_FD_PRIMARY_ADDR, (const void *)"\xBB", 1, 1000);
+    CHECK_EQUAL(TINY_SUCCESS, result);
+
+    // Send both I-frames out
+    int len = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
+    len += tiny_fd_get_tx_data(handle, outBuffer.data() + len, outBuffer.size() - len, 100);
+
+    // Peer sends REJ for frame 0: control=0x09 (REJ, N(R)=0)
+    auto read_result = tiny_fd_on_rx_data(handle, (uint8_t *)"\x7E\x03\x09\x7E", 4);
+    CHECK_EQUAL(TINY_SUCCESS, read_result);
+
+    // REJ should retransmit BOTH frames: frame 0 and frame 1
+    len = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
+    CHECK(len > 0);
+    CHECK_EQUAL(0x00, (outBuffer[2] >> 1) & 0x07); // N(S) = 0 (first retransmit)
+
+    int len2 = tiny_fd_get_tx_data(handle, outBuffer.data(), outBuffer.size(), 100);
+    CHECK(len2 > 0);
+    CHECK_EQUAL(0x01, (outBuffer[2] >> 1) & 0x07); // N(S) = 1 (second retransmit)
+}

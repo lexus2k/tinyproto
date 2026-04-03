@@ -86,6 +86,7 @@ extern "C"
 
         uint8_t sent_nr;     // frame index last sent back
         uint8_t sent_reject; // If reject was already sent
+        uint8_t srej_req_mask; // Bitmask of frames requested for selective retransmission
 
         i_queue_control_t i_queue_control;
 

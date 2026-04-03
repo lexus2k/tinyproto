@@ -123,7 +123,7 @@ static int __on_s_frame_read(tiny_fd_handle_t handle, uint8_t peer, void *data, 
     uint8_t nr = control >> 5;
     int result = TINY_ERR_FAILED;
     LOG(TINY_LOG_INFO, "[%p] Receiving S-Frame N(R)=%02X, type=%s with address [%02X]\n", handle, nr,
-        ((control >> 2) & 0x03) == 0x00 ? "RR" : ((control >> 2) & 0x03) == 0x01 ? "RNR" : "REJ", ((uint8_t *)data)[0]);
+        ((control >> 2) & 0x03) == 0x00 ? "RR" : ((control >> 2) & 0x03) == 0x01 ? "RNR" : ((control >> 2) & 0x03) == 0x02 ? "REJ" : "SREJ", ((uint8_t *)data)[0]);
     if ( (control & HDLC_S_FRAME_TYPE_MASK) == HDLC_S_FRAME_TYPE_REJ )
     {
         // Confirm all previously sent frames up to received N(R)
@@ -154,6 +154,14 @@ static int __on_s_frame_read(tiny_fd_handle_t handle, uint8_t peer, void *data, 
         // Confirm all previously sent frames up to received N(R), but peer is busy — do not send more
         __confirm_sent_frames(handle, peer, nr);
         LOG(TINY_LOG_WRN, "[%p] Peer signalled RNR (busy), pausing I-frame transmission\n", handle);
+    }
+    else if ( (control & HDLC_S_FRAME_TYPE_MASK) == HDLC_S_FRAME_TYPE_SREJ )
+    {
+        // SREJ: confirm frames up to N(R), retransmit only frame N(R)
+        __confirm_sent_frames(handle, peer, nr);
+        LOG(TINY_LOG_INFO, "[%p] SREJ received for frame N(R)=%d, scheduling selective retransmit\n", handle, nr);
+        handle->peers[peer].srej_req_mask |= (1 << nr);
+        tiny_events_set(&handle->events, FD_EVENT_TX_DATA_AVAILABLE);
     }
     return result;
 }
@@ -195,6 +203,7 @@ static int __on_u_frame_read(tiny_fd_handle_t handle, uint8_t peer, void *data, 
         __reset_i_queue_control(&handle->peers[peer].i_queue_control);
         handle->peers[peer].sent_nr = 0;
         handle->peers[peer].sent_reject = 0;
+        handle->peers[peer].srej_req_mask = 0;
         tiny_frame_header_t frame = {
             .address = __peer_to_address_field( handle, peer ),
             .control = HDLC_U_FRAME_TYPE_UA | HDLC_U_FRAME_BITS,

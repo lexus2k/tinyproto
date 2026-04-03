@@ -118,6 +118,7 @@ static const char *__get_frame_subtype_str(uint8_t control)
             case HDLC_S_FRAME_TYPE_RR:  return "  RR";
             case HDLC_S_FRAME_TYPE_RNR: return " RNR";
             case HDLC_S_FRAME_TYPE_REJ: return " REJ";
+            case HDLC_S_FRAME_TYPE_SREJ: return "SREJ";
             default:                    return " UNK";
         }
     }
