@@ -34,11 +34,32 @@
 *.gcda
 *.gcno
 
+# Profiling
+gmon.out
+
+# Coverage
+lcov.info
+*.info
+
+# Build directories
+build/
+bld/
+
+# Runtime debug/test output
+tiny_fd_*.csv
+failed_log
 
 # Added by cargo
-
 /target
+Cargo.lock
 
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 
-# build folder
-build/
+# OS metadata
+.DS_Store
+Thumbs.db
