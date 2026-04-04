@@ -44,12 +44,21 @@ extern "C"
      * @defgroup HDLC_LOW_LEVEL_API HDLC low level protocol API
      * @{
      *
-     * @brief low level HDLC protocol implementation
+     * @brief Low-level HDLC framing: flag bytes, byte stuffing, and CRC.
      *
-     * @details this group implements low level HDLC functions, which implement
-     *          framing only according to RFC 1662: 0x7E, 0x7D, 0x20 (ISO Standard 3309-1979).
-     *          hdlc_ll functions do not use any synchronization, mutexes, etc. Thus low level
-     *          implementation is completely platform independent.
+     * @details This module implements low-level HDLC framing according to
+     *          RFC 1662 and ISO 3309-1979. It handles:
+     *          - Frame delimiters (0x7E)
+     *          - Byte stuffing / transparency (0x7D escape sequences)
+     *          - CRC calculation and validation (8-bit, FCS-16, FCS-32, or none)
+     *
+     *          This is a stateless framing layer — it does not implement acknowledgments,
+     *          sequence numbers, or retransmission. For reliable delivery, use the
+     *          Full-Duplex protocol (\ref FULL_DUPLEX_API).
+     *
+     *          The hdlc_ll functions do not use any synchronization primitives (mutexes, etc.),
+     *          making them completely platform-independent and safe for use in interrupt context
+     *          (with care).
      */
 
     /**
@@ -120,7 +129,7 @@ extern "C"
         int mtu;
     } hdlc_ll_init_t;
 
-    //------------------------ GENERIC FUNCIONS ------------------------------
+    //------------------------ GENERIC FUNCTIONS ------------------------------
 
     /**
      * Initializes hdlc level and returns hdlc handle or NULL in case of error.
@@ -148,7 +157,7 @@ extern "C"
      */
     void hdlc_ll_reset(hdlc_ll_handle_t handle, uint8_t flags);
 
-    //------------------------ RX FUNCIONS ------------------------------
+    //------------------------ RX FUNCTIONS ------------------------------
 
     /**
      * Processes incoming data. Implementation of reading data from hw is user
@@ -181,7 +190,7 @@ extern "C"
      */
     int hdlc_ll_run_rx(hdlc_ll_handle_t handle, const void *data, int len, int *error);
 
-    //------------------------ TX FUNCIONS ------------------------------
+    //------------------------ TX FUNCTIONS ------------------------------
 
     /**
      * If hdlc protocol has some data to send it will full data with

@@ -1,110 +1,222 @@
 /**
  @file
- @brief Tiny Microcontroller Communication Protocol.
+ @brief TinyProto — HDLC-based data link protocol library.
 
- \mainpage Tiny Protocol
+ \mainpage TinyProto Library
 
- This is Tiny protocol implementation for microcontrollers (Arduino, Stellaris).
+ TinyProto is a lightweight, portable HDLC-based Layer 2 protocol library for embedded systems
+ and microcontrollers. It provides reliable, framed communication over UART, SPI, I2C, USB CDC,
+ TCP sockets, or any byte-oriented transport — with automatic retransmission, CRC error detection,
+ and zero dynamic memory allocation.
+
+ Based on RFC 1662 and the HDLC specification.
 
  \tableofcontents
 
  \section introduction Introduction
 
-This protocol is intended to be used in low-memory systems, like
-microcontrollers (Stellaris, AVR, Espressif, STM). It is also can be compiled
-for desktop Linux systems, and it is possible to build it for
-Windows.
+ TinyProto is a <b>Layer 2 (Data Link)</b> protocol implementation. It is designed for
+ resource-constrained environments — from 8-bit AVR microcontrollers to full Linux/Windows
+ desktop systems. All memory is statically allocated; no malloc is ever called.
 
- \section api Tiny Protocol API
+ The library supports three protocol layers:
 
-Library API supports C-Style functions - the basic API, and C++ API, which provides
-high level easy to use classes. Please refer to documentation. Basically TinyProto
-library provides 3 different protocol implementations:
+ | Layer | API | Description |
+ |-------|-----|-------------|
+ | Light | \ref LIGHT_API | SLIP-like framing with optional CRC. No acknowledgments. Low overhead. |
+ | HDLC LL | \ref HDLC_LOW_LEVEL_API | Low-level HDLC framing: flag bytes, byte stuffing, CRC. Building block for custom protocols. |
+ | Full-Duplex (FD) | \ref FULL_DUPLEX_API | Complete HDLC implementation with sliding window (1–7 frames), ACK/NAK, automatic retransmission, and two operating modes: ABM and NRM. |
 
- * \ref HDLC_API This is basis, which all other protocols implementations are built on top of. Hdlc api provides
-                 basic input/output operations, like FCS, escape sequencies, etc. There is
-                 no C++ wrappers for it.
+ Use \ref FULL_DUPLEX_API for reliable communication between devices. Use \ref LIGHT_API
+ when you need minimal overhead. Use \ref HDLC_LOW_LEVEL_API if you need raw HDLC framing
+ as a building block.
 
- * \ref LIGHT_API This is simple protocol, based on HDLC api. It simplifies sending and receiving messages
-                 on small controllers, and at the same time it has low memory consumption (800 bytes of flash).
-                 But, be careful since light version doesn't have any confirmation from remote side. At the same
-                 time light version checks for checksum, and validates received data.
+ \section modes Operating Modes (Full-Duplex)
 
- * \ref FULL_DUPLEX_API This is the heaviest protocol implementation in the library. For atmega controllers
-                 it requires 7KiB of flash, and at least 700 bytes of RAM to operate with 64-byte length frames.
-                 Unlike hd version, fd version of protocol is much faster, as it doesn't wait for confirmation
-                 before sending next frame (thanks to window, specified in HDLC specs). Fd version of protocol
-                 uses official HDLC frame format, and implements U-frames (SABM,UA), S-frames (RR,REJ),
-                 I-frames.
+ The Full-Duplex protocol (\ref FULL_DUPLEX_API) supports two HDLC operating modes:
+
+ \subsection abm_mode ABM — Asynchronous Balanced Mode (Peer-to-Peer)
+
+ Both endpoints are equal peers. Either side can initiate data transfer at any time.
+ Connection is established via <b>SABM/UA</b> exchange. Supports hot plug/unplug with
+ automatic reconnection.
+
+ Use ABM for point-to-point links between two MCUs, or MCU-to-PC communication.
+
+ @code{.c}
+ tiny_fd_init_t init = {0};
+ init.mode = TINY_FD_MODE_ABM;
+ init.on_read_cb = on_frame_received;
+ // ... set buffer, window_frames, crc_type, etc.
+ tiny_fd_init(&handle, &init);
+ @endcode
+
+ \subsection nrm_mode NRM — Normal Response Mode (Multi-drop / RS-485)
+
+ One primary station controls communication with one or more secondary stations.
+ The primary polls secondaries in round-robin order using P/F (Poll/Final) bits.
+ Secondaries only transmit when polled. Connection is established via <b>SNRM/UA</b> exchange.
+
+ Use NRM for RS-485 buses, multi-drop serial networks, or sensor networks.
+
+ <b>Primary station setup:</b>
+ @code{.c}
+ tiny_fd_init_t init = {0};
+ init.mode = TINY_FD_MODE_NRM;
+ init.addr = TINY_FD_PRIMARY_ADDR;  // address 0 = primary
+ init.peers_count = 3;               // support up to 3 secondaries
+ init.on_read_cb = on_frame_received;
+ // ... set buffer, window_frames, crc_type, etc.
+ tiny_fd_init(&handle, &init);
+
+ // Register secondary stations
+ tiny_fd_register_peer(handle, 1);
+ tiny_fd_register_peer(handle, 2);
+ tiny_fd_register_peer(handle, 3);
+ @endcode
+
+ <b>Secondary station setup:</b>
+ @code{.c}
+ tiny_fd_init_t init = {0};
+ init.mode = TINY_FD_MODE_NRM;
+ init.addr = 1;  // unique address 1–62
+ init.on_read_cb = on_frame_received;
+ // ... set buffer, window_frames, crc_type, etc.
+ tiny_fd_init(&handle, &init);
+ @endcode
+
+ \section frames HDLC Frame Types
+
+ TinyProto implements all standard HDLC frame types:
+
+ <b>Information frames (I-frames):</b> Carry user data with sequence numbers for reliable delivery.
+
+ <b>Supervisory frames (S-frames):</b>
+ - <b>RR</b> — Receiver Ready: acknowledges received frames
+ - <b>RNR</b> — Receiver Not Ready: flow control
+ - <b>REJ</b> — Reject: requests retransmission from sequence N (go-back-N)
+ - <b>SREJ</b> — Selective Reject: requests retransmission of a specific frame
+
+ <b>Unnumbered frames (U-frames):</b>
+ - <b>SABM</b> — Set Asynchronous Balanced Mode (ABM connection setup)
+ - <b>SNRM</b> — Set Normal Response Mode (NRM connection setup)
+ - <b>DISC</b> — Disconnect
+ - <b>UA</b> — Unnumbered Acknowledge
+ - <b>DM</b> — Disconnected Mode
+ - <b>FRMR</b> — Frame Reject (protocol error)
+ - <b>UI</b> — Unnumbered Information (connectionless data — no connection required)
+ - <b>RSET</b> — Reset sequence counters
 
  \section packet Packet Structure
 
-HDLC frame format:
-<pre>
-     8        any len    None/8/16/32     8
- |   7E   |    DATA     |    FCS     |   7E   |
-</pre>
+ <b>HDLC low-level frame format</b> (used by \ref HDLC_LOW_LEVEL_API and \ref LIGHT_API):
+ <pre>
+      8        any len    None/8/16/32     8
+  |   7E   |    DATA     |    FCS     |   7E   |
+ </pre>
 
-Full duplex hdlc uses standard hdlc frame format:
-<pre>
-     8     ADDR  CONTROL     any len    None/8/16/32     8
- |   7E   | FF | hdlc ctl | USER DATA  |    FCS     |   7E   |
-</pre>
+ <b>Full-Duplex frame format</b> (used by \ref FULL_DUPLEX_API):
+ <pre>
+      8     ADDR  CONTROL     any len    None/8/16/32     8
+  |   7E   | ADDR | CTRL  | USER DATA  |    FCS     |   7E   |
+ </pre>
 
- - 7E is packet delimiter (commonly used on layer 2) as defined in HDLC/PPP framing.
-   packet delimiter is used by the protocol to find first and last byte of the frame
-   being transmitted.
- - USER DATA of any length. This field contains user data with replaced 0x7D and 0x7E bytes by
-   special sequenced as defined in HDLC/PPP framing. Length of data is now limited on buffer
-   used to receive frames and/or 32767 bytes (Tiny Protocol using 16-bit field to store frame
-   length).
- - FCS is standard checksum. Depending on your selection, this is 8-bit, 16-bit or 32-bit field, or it
-   can be absent at all. Refer to RFC1662 for examples. FCS field is also optional and can be disabled.
-   But in this case transport errors are not detected.
+ - <b>0x7E</b> — Frame delimiter as defined in HDLC/PPP framing (RFC 1662).
+ - <b>ADDR</b> — Station address field. Encodes station address and command/response bit.
+ - <b>CTRL</b> — Control field. Identifies frame type (I, S, or U) and carries sequence numbers.
+ - <b>USER DATA</b> — Payload of any length up to MTU. Bytes 0x7D and 0x7E are escaped
+   using byte stuffing as defined in HDLC/PPP framing.
+ - <b>FCS</b> — Frame Check Sequence. Optional 8-bit checksum, 16-bit FCS (CCITT), or 32-bit FCS (CCITT).
+   Can be disabled, but transport errors will not be detected.
 
- \section callback User-defined callbacks
+ \section callbacks User-Defined Callbacks
 
-\ref HDLC_API needs 3 callback functions, defined by a user (you may use any function names you need). 
+ \subsection fd_callbacks Full-Duplex API Callbacks
 
-HDLC callbacks:
-@code{.cpp}
-int write_func_cb(void *user_data, const void *data, int len);
-int on_frame_read(void *user_data, void *data, int len);
-int on_frame_send(void *user_data, void *data, int len);
-@endcode
+ The FD protocol uses the following callback signatures:
 
- - write_func_cb() is called by HDLC implementation every time, it needs to
-   send bytes to TX channel
- - on_frame_read() is called by HDLC implementation every time, new frame arrives
-   and checksum is correct.
- - on_frame_send() is called by HDLC implementation every time, new frame is sent
-   to TX.
-HDLC protocol requires only write_func_cb() to be defined. Other callbacks are optional.
-As for RX processes, your application code is responsible for reading data from RX line,
-then all you need to do, is to pass received bytes to HDLC implementation for processing
-via hdlc_run_rx().
+ @code{.c}
+ // Called when a complete I-frame is received
+ void on_frame_read(void *udata, uint8_t addr, uint8_t *pdata, int size);
 
-All higher level protocols (\ref LIGHT_API, \ref FULL_DUPLEX_API)
-needs 4 callback functions, defined by a user:
-The list of callbacks:
+ // Called when a frame has been sent
+ void on_frame_send(void *udata, uint8_t addr, const uint8_t *pdata, int size);
 
-@code{.cpp}
-int write_func_cb(void *user_data, const void *data, int len);  // LIGHT API Only
-int read_func_cb(void *user_data, void *data, int len);         // LIGHT API Only
-void on_frame_cb(void *udata, uint8_t *pdata, int size);        // FD API Only
-void on_frame_send_cb(void *udata, const uint8_t *pdata, int size);  // FD API Only
-@endcode
+ // Called on connect/disconnect events
+ void on_connect_event(void *udata, uint8_t addr, bool connected);
 
-Unlike HDLC implementation, higher level protocols use different approach. They control both
-TX and RX channels, for example, to transparently send ACK frames, etc. That's why higher level
-protocols need to read_func_cb to be defined:
+ // Called when a UI (connectionless) frame is received
+ void on_read_ui(void *udata, uint8_t addr, uint8_t *pdata, int size);
+ @endcode
 
- - read_func_cb() is called by higher level protocol implementation every time, it needs to
-   read bytes from RX channel.
+ Note: the @c addr parameter identifies the remote peer address. In ABM mode it is
+ always 0. In NRM mode it identifies the secondary station.
 
- \section arduino_section Arduino related documentation
+ \subsection hdlc_callbacks HDLC Low-Level Callbacks
 
-\ref arduino
+ @code{.c}
+ // Called when a complete frame is received
+ void on_frame_read(void *udata, uint8_t *pdata, int size);
+
+ // Called when a frame has been sent
+ void on_frame_send(void *udata, const uint8_t *pdata, int size);
+ @endcode
+
+ \subsection light_callbacks Light Protocol Callbacks
+
+ The Light protocol uses read/write callbacks to interact with the communication channel:
+
+ @code{.c}
+ // Write bytes to the communication channel
+ int write_func(void *udata, const void *data, int len);
+
+ // Read bytes from the communication channel
+ int read_func(void *udata, void *data, int len);
+ @endcode
+
+ \section crc_section CRC Options
+
+ All protocol layers support configurable error detection:
+
+ | Option | Constant | Description |
+ |--------|----------|-------------|
+ | Auto | @c HDLC_CRC_DEFAULT | Automatically selects the best available CRC (prefers CRC-16) |
+ | 8-bit checksum | @c HDLC_CRC_8 | Simple sum of all payload bytes. Lowest overhead. |
+ | 16-bit FCS | @c HDLC_CRC_16 | CCITT CRC-16 as defined in RFC 1662. Recommended for most use cases. |
+ | 32-bit FCS | @c HDLC_CRC_32 | CCITT CRC-32. Best error detection at higher overhead. |
+ | Disabled | @c HDLC_CRC_OFF | No CRC. Use only on error-free transports. |
+
+ \section buffer_section Buffer Sizing
+
+ The Full-Duplex protocol requires a pre-allocated buffer. Use the helper macros to calculate
+ the required size:
+
+ @code{.c}
+ // Simple: specify MTU and sliding window size
+ int size = tiny_fd_buffer_size_by_mtu(64, 4);  // 64-byte payload, window of 4
+
+ // Extended: specify peers, MTU, window, CRC type, and extra RX buffer
+ int size = tiny_fd_buffer_size_by_mtu_ex(3, 64, 4, HDLC_CRC_16, 1);
+ @endcode
+
+ \section getting_started Getting Started
+
+ See \ref getting_started_page for step-by-step examples in C, C++ and Python.
+
+ \section arduino_section Arduino
+
+ See \ref arduino for Arduino-specific examples using both the Light and Full-Duplex protocols.
+
+ \section platforms Supported Platforms
+
+ TinyProto runs on any platform with a C99/C++11 compiler:
+ - Arduino (Uno, Mega, Zero, Due, Nano)
+ - ESP32, ESP32-S2, ESP32-C3
+ - ARM Cortex (STM32, nRF52, Teensy, SAMD)
+ - AVR (ATmega328, ATmega2560)
+ - Linux, macOS, Windows
+ - RISC-V (ESP32-C3, GD32V)
+ - Custom platforms via HAL abstraction (define @c TINY_CUSTOM_PLATFORM)
 
 */
 
@@ -112,25 +224,27 @@ protocols need to read_func_cb to be defined:
 
 /*!
        \defgroup ERROR_CODES Error codes for Tiny API functions
-       Error codes for Tiny API functions
+       Error codes returned by Tiny Protocol API functions.
+       All error codes are negative integers. TINY_SUCCESS (0) indicates success.
 */
 
 /*!
        \defgroup MUTEX Mutex API
-       Mutex API
+       Cross-platform mutex primitives used internally by the protocol and available
+       for application use.
 */
 
 /*!
        \defgroup EVENTS Event groups API
-       Event groups API
+       Cross-platform event group primitives for inter-thread signaling.
 */
 
 /*!
        \defgroup TIME Time-specific API
-       Time-specific API
+       Cross-platform timing functions: sleep, millisecond and microsecond timestamps.
 */
 
 /*!
        \defgroup SERIAL Serial port API
-       Serial port API
+       Platform serial port abstraction for communication channel access.
 */

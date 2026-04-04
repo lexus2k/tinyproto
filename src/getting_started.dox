@@ -1,0 +1,240 @@
+/**
+ @file
+ @brief Getting Started guide.
+
+ \page getting_started_page Getting Started
+
+ This page provides step-by-step examples for using TinyProto in C, C++, and Python.
+
+ \tableofcontents
+
+ \section gs_overview Overview
+
+ A typical TinyProto application follows this pattern:
+
+ 1. <b>Allocate</b> a protocol buffer (statically or dynamically)
+ 2. <b>Initialize</b> the protocol with your configuration and callbacks
+ 3. <b>Main loop:</b>
+    - Feed received bytes into the protocol (RX path)
+    - Get bytes from the protocol and send them (TX path)
+    - Send application data when needed
+ 4. <b>Close</b> the protocol when done
+
+ \section gs_c_api C API
+
+ \subsection gs_c_abm ABM Mode — Peer-to-Peer
+
+@code{.c}
+#include "proto/fd/tiny_fd.h"
+#include <stdio.h>
+
+// Called when a complete message is received
+static void on_frame_received(void *udata, uint8_t addr, uint8_t *buf, int len)
+{
+    printf("Received %d bytes from addr %d\n", len, addr);
+}
+
+// Called when connection state changes
+static void on_connect(void *udata, uint8_t addr, bool connected)
+{
+    printf("Peer %d %s\n", addr, connected ? "connected" : "disconnected");
+}
+
+int main(void)
+{
+    // Step 1: Allocate buffer
+    uint8_t buffer[tiny_fd_buffer_size_by_mtu(64, 4)];
+
+    // Step 2: Initialize
+    tiny_fd_handle_t handle;
+    tiny_fd_init_t init = {0};
+    init.pdata             = NULL;
+    init.on_read_cb        = on_frame_received;
+    init.on_connect_event_cb = on_connect;
+    init.buffer            = buffer;
+    init.buffer_size       = sizeof(buffer);
+    init.window_frames     = 4;       // sliding window size (1–7)
+    init.send_timeout      = 1000;    // 1 second
+    init.retry_timeout     = 200;     // 200 ms
+    init.retries           = 3;
+    init.crc_type          = HDLC_CRC_16;
+    init.mode              = TINY_FD_MODE_ABM;
+
+    if (tiny_fd_init(&handle, &init) != TINY_SUCCESS) {
+        printf("Init failed\n");
+        return -1;
+    }
+
+    // Step 3: Main loop
+    while (1) {
+        // RX: read bytes from hardware and feed to protocol
+        uint8_t rx_buf[128];
+        int rx_len = serial_read(rx_buf, sizeof(rx_buf)); // your HW read
+        if (rx_len > 0) {
+            tiny_fd_on_rx_data(handle, rx_buf, rx_len);
+        }
+
+        // TX: get bytes from protocol and send to hardware
+        uint8_t tx_buf[128];
+        int tx_len = tiny_fd_get_tx_data(handle, tx_buf, sizeof(tx_buf), 0);
+        if (tx_len > 0) {
+            serial_write(tx_buf, tx_len); // your HW write
+        }
+
+        // Send application data
+        tiny_fd_send_packet(handle, "Hello", 6, 1000);
+    }
+
+    // Step 4: Close
+    tiny_fd_close(handle);
+    return 0;
+}
+@endcode
+
+ \subsection gs_c_nrm_primary NRM Mode — Primary Station
+
+@code{.c}
+tiny_fd_init_t init = {0};
+init.mode         = TINY_FD_MODE_NRM;
+init.addr         = TINY_FD_PRIMARY_ADDR;  // 0 = primary
+init.peers_count  = 3;                     // support up to 3 secondaries
+init.on_read_cb   = on_frame_received;
+// ... other fields same as ABM example ...
+
+tiny_fd_init(&handle, &init);
+
+// Register the secondary stations you expect on the bus
+tiny_fd_register_peer(handle, 1);  // secondary at address 1
+tiny_fd_register_peer(handle, 2);  // secondary at address 2
+
+// Send data to a specific secondary
+tiny_fd_send_packet_to(handle, 1, "Hello Sec1", 11, 1000);
+@endcode
+
+ \subsection gs_c_nrm_secondary NRM Mode — Secondary Station
+
+@code{.c}
+tiny_fd_init_t init = {0};
+init.mode         = TINY_FD_MODE_NRM;
+init.addr         = 1;  // unique secondary address (1–62)
+init.on_read_cb   = on_frame_received;
+// ... other fields ...
+
+tiny_fd_init(&handle, &init);
+
+// Secondary sends data to primary (default destination)
+tiny_fd_send_packet(handle, "Hello Primary", 14, 1000);
+@endcode
+
+ \subsection gs_c_ui UI Frames — Connectionless Data
+
+ UI (Unnumbered Information) frames can be sent without an established connection.
+ They are not acknowledged and do not use sequence numbers.
+
+@code{.c}
+// Set up a callback for incoming UI frames
+init.on_read_ui_cb = on_ui_frame_received;
+
+// Send a UI frame (works even when disconnected)
+tiny_fd_send_ui_packet(handle, "broadcast data", 15);
+
+// Send UI to a specific peer in NRM mode
+tiny_fd_send_ui_packet_to(handle, 2, "data for addr 2", 16);
+@endcode
+
+ \section gs_cpp C++ API
+
+ \subsection gs_cpp_static Static Buffer (No Heap)
+
+ Use @c tinyproto::Fd<N> for systems without dynamic allocation:
+
+@code{.cpp}
+#include "TinyProtocolFd.h"
+
+// 1024-byte static buffer
+tinyproto::Fd<1024> proto;
+
+void onReceive(void *udata, uint8_t addr, tinyproto::IPacket &pkt)
+{
+    // pkt.data() — pointer to payload
+    // pkt.size() — payload size in bytes
+}
+
+void setup()
+{
+    proto.setReceiveCallback(onReceive);
+    proto.setWindowSize(4);
+    proto.enableCrc16();
+    proto.begin();
+}
+
+// In your main loop, call:
+//   proto.run_rx(data, len)   — feed received bytes
+//   proto.run_tx(buf, size)   — get bytes to transmit
+//   proto.write(data, len)    — send application data
+@endcode
+
+ \subsection gs_cpp_dynamic Dynamic Buffer
+
+ Use @c tinyproto::FdD on systems with heap allocation:
+
+@code{.cpp}
+#include "TinyProtocolFd.h"
+
+tinyproto::FdD proto(4096);  // buffer allocated on heap
+proto.setWindowSize(7);
+proto.enableCrc32();
+proto.begin();
+
+proto.write("Hello World", 12);
+@endcode
+
+ \section gs_python Python API
+
+@code{.py}
+import tinyproto
+
+# Create Full-Duplex protocol instance
+fd = tinyproto.Fd()
+fd.crc = tinyproto.CRC_16
+fd.mtu = 64
+fd.window_size = 4
+
+# Set callbacks (Fd callbacks receive addr + data)
+fd.on_read = lambda addr, data: print(f"Received from {addr}: {data.hex()}")
+fd.on_connect_event = lambda addr, connected: print(f"Peer {addr}: {'up' if connected else 'down'}")
+
+fd.begin()
+
+# Main loop:
+#   fd.rx(bytearray)  — feed received bytes
+#   tx = fd.tx()       — get bytes to transmit
+#   fd.send(data)      — send application data
+
+fd.end()
+@endcode
+
+ For NRM mode in Python:
+
+@code{.py}
+# Primary station
+fd = tinyproto.Fd()
+fd.mode = tinyproto.MODE_NRM
+fd.addr = tinyproto.PRIMARY_ADDR
+fd.peers_count = 3
+fd.begin()
+
+fd.register_peer(1)
+fd.register_peer(2)
+fd.send_to(1, b"Hello secondary 1")
+
+# Secondary station
+fd = tinyproto.Fd()
+fd.mode = tinyproto.MODE_NRM
+fd.addr = 1  # unique address 1–62
+fd.begin()
+
+fd.send(b"Hello primary")
+@endcode
+
+*/

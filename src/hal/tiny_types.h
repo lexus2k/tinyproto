@@ -121,7 +121,7 @@ extern "C"
  */
 /// Tiny operation successful. Only tiny_send_start and tiny_read_start functions return this code
 #define TINY_SUCCESS (0)
-/// Timeout
+/// General failure
 #define TINY_ERR_FAILED (-1)
 /// Timeout happened. The function must be called once again.
 #define TINY_ERR_TIMEOUT (-2)
@@ -205,7 +205,7 @@ extern "C"
     /**
      * on_frame_read_cb_t is a callback function, which is called every time new frame is received.
      * @param udata user data
-     * @param address address if peer station
+     * @param address address of peer station
      * @param pdata  pointer to data received from the channel.
      * @param size   size of data received.
      * @return None.

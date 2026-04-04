@@ -42,10 +42,14 @@ extern "C"
      * @defgroup HDLC_API Tiny HDLC protocol API functions
      * @{
      *
-     * @brief high level HDLC protocol implementation
+     * @brief High-level HDLC framing with read/write callback integration.
      *
-     * @details this group implements high level HDLC functions, which implement
-     *          framing only according to RFC 1662: 0x7E, 0x7D, 0x20 (ISO Standard 3309-1979).
+     * @details This module builds on top of the low-level HDLC framing (\ref HDLC_LOW_LEVEL_API)
+     *          and adds integration with user-provided read/write callbacks for the communication
+     *          channel. It handles HDLC framing (flag bytes, byte stuffing, CRC) but does not
+     *          implement acknowledgments or retransmission.
+     *
+     *          For reliable delivery, use the Full-Duplex protocol (\ref FULL_DUPLEX_API).
      */
 
     /**

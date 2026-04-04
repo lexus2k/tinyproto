@@ -33,7 +33,12 @@
  @file
  @brief Tiny Protocol Full Duplex API
 
- @details Implements full duplex asynchronous ballanced mode (ABM)
+ @details Implements full duplex protocol with support for two HDLC operating modes:
+          - ABM (Asynchronous Balanced Mode) — peer-to-peer communication
+          - NRM (Normal Response Mode) — primary/secondary multi-drop communication (e.g. RS-485)
+
+          Features: sliding window (1–7 frames), automatic retransmission, I/S/U frame support,
+          CRC error detection, connectionless UI frames, and connect/disconnect event handling.
 */
 #pragma once
 
@@ -49,6 +54,24 @@ extern "C"
     /**
      * @defgroup FULL_DUPLEX_API Tiny Full Duplex API functions
      * @{
+     *
+     * @brief Full-Duplex protocol with reliable delivery and two operating modes.
+     *
+     * @details The Full-Duplex (FD) protocol provides reliable, bidirectional communication
+     *          using HDLC framing with sliding window, automatic retransmission, and CRC.
+     *
+     *          Two operating modes are supported:
+     *          - @b ABM (Asynchronous Balanced Mode): peer-to-peer, both sides are equal.
+     *            Connection via SABM/UA exchange. Use TINY_FD_MODE_ABM.
+     *          - @b NRM (Normal Response Mode): one primary, multiple secondaries.
+     *            Primary polls secondaries using P/F bits. Use TINY_FD_MODE_NRM.
+     *
+     *          Typical usage:
+     *          1. Allocate a buffer using tiny_fd_buffer_size_by_mtu()
+     *          2. Fill tiny_fd_init_t and call tiny_fd_init()
+     *          3. In your main loop: call tiny_fd_on_rx_data() and tiny_fd_get_tx_data()
+     *          4. Send data with tiny_fd_send_packet() or tiny_fd_send_to()
+     *          5. Close with tiny_fd_close()
      */
 
     /**
@@ -65,10 +88,11 @@ extern "C"
         TINY_FD_MODE_ABM = 0x00,
 
         /**
-         * Normal response mode allows the secondary-to-primary link to be shared without
-         * contention, because it has the primary give the secondaries permission to transmit
-         * one at a time.
-         * @warning This mode is still in development
+         * Normal Response Mode allows the primary station to control communication with
+         * one or more secondary stations. The primary polls each secondary in round-robin
+         * order using P/F (Poll/Final) bits. Secondaries only transmit when polled.
+         * Connection is established via SNRM/UA exchange.
+         * Ideal for RS-485 buses and multi-drop serial networks.
          */
         TINY_FD_MODE_NRM = 0x01,
 
@@ -162,6 +186,10 @@ extern "C"
    
     /**
      * This structure is used for initialization of Tiny Full Duplex protocol.
+     * Zero-initialize this structure before setting fields, then pass to tiny_fd_init().
+     *
+     * Required fields: on_read_cb, buffer, buffer_size, window_frames.
+     * Use tiny_fd_buffer_size_by_mtu() or tiny_fd_buffer_size_by_mtu_ex() to calculate buffer_size.
      */
     typedef struct tiny_fd_init_t_
     {
@@ -273,7 +301,7 @@ extern "C"
      *
      * @param handle - pointer to Tiny Full Duplex data
      * @param init - pointer to tiny_fd_init_t data.
-     * @return TINY_NO_ERROR in case of success.
+     * @return TINY_SUCCESS in case of success.
      *         TINY_ERR_FAILED if init parameters are incorrect.
      * @remarks This function is not thread safe.
      */

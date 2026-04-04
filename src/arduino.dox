@@ -1,109 +1,198 @@
 /**
  @file
- @brief Arduino reated API.
+ @brief Arduino API examples.
 
- \page arduino Arduino related API (C++)
+ \page arduino Arduino API (C++)
 
- This is Tiny protocol implementation for microcontrollers (Arduino, Stellaris).
+ This page demonstrates how to use TinyProto on Arduino boards using the C++ API.
 
  \tableofcontents
 
- \section arduino_tiny Simple Tiny Protocol examples
+ \section arduino_light Light Protocol Examples
 
- Simple Tiny Protocol examples section is applicable only when working with \ref LIGHT_API.
+ The Light protocol (\ref LIGHT_API) provides simple SLIP-like framing with optional CRC
+ and very low memory consumption (~800 bytes of flash). It does not provide acknowledgments
+ or retransmission — use it when simplicity and low overhead are more important than
+ guaranteed delivery.
 
- \subsection arduino_tiny_init Initialization
+ \subsection arduino_light_init Initialization
 
 @code{.cpp}
+#include "TinyLightProtocol.h"
+
 tinyproto::Light proto;
 
 void setup()
 {
+    Serial.begin(115200);
+    // Bind protocol to Serial port
     proto.beginToSerial();
 }
 @endcode
 
- \subsection arduino_tiny_send Sending/Receiving data over protocol
+ \subsection arduino_light_send Sending and Receiving Data
 
- \subsubsection arduino_tiny_send_receive1 Variant 1
+ \subsubsection arduino_light_raw Raw Buffers
 
-First variant: without using any helpers to work with data
 @code{.cpp}
+#include "TinyLightProtocol.h"
+
 tinyproto::Light proto;
+uint8_t rx_buffer[64];
 
-/* The buffer must be defined globally */
-uint8_t g_buffer[16];
+void setup()
+{
+    Serial.begin(115200);
+    proto.beginToSerial();
+}
 
 void loop()
 {
-    if (needToSend)
-    {
-        /* define buffer, you want to use */
-        uint8_t buffer[16];
+    // Send raw bytes
+    uint8_t tx_data[] = {0x01, 0x02, 0x03};
+    proto.write((char *)tx_data, sizeof(tx_data));
 
-        /* Prepare data you want to send here */
-        buffer[0] = 10;
-        buffer[1] = 20;
-
-        /* Send 2 bytes to remote side */
-        proto.write( buffer, 2 );
-    }
-    int length;
-    length = proto.read( g_buffer, sizeof(g_buffer), TINY_FLAG_NO_WAIT );
-    if ( length > 0 )
-    {
-        /* Parse your data received from remote side here. */
+    // Read incoming frame (non-blocking)
+    int len = proto.read((char *)rx_buffer, sizeof(rx_buffer));
+    if (len > 0) {
+        // Process received data
     }
 }
 @endcode
 
- \subsubsection arduino_tiny_send_receive2 Variant 2
-
-Second variant: with using special helper to pack the data being sent
-@code{.cpp}
-tinyproto::Proto proto;
-
-/* The buffer must be defined globally */
-tinyproto::StaticPacket<16> packet;
-
-void loop()
-{
-    if (needToSend)
-    {
-        /* Create helper object to simplify packing of data being sent */
-        tinyproto::StaticPacket<16> packet;
-
-        /* Pack data you want to send here */
-        packet.put( "message" );
-
-        /* Send message to remote side */
-        proto.write( packet );
-    }
-    int length;
-    length = proto.read( packet, TINY_FLAG_NO_WAIT );
-    if ( length > 0 )
-    {
-        /* Parse your data received from remote side here. */
-        /* For example, read sent ealier in example above "message" */
-        char * str = packet.getString();
-    }
-}
-@endcode
-
- \subsection arduino_tiny_close Stopping communication
+ \subsubsection arduino_light_packet Using Packets
 
 @code{.cpp}
-tinyproto::Proto proto;
+#include "TinyLightProtocol.h"
+#include "TinyPacket.h"
+
+tinyproto::Light proto;
+tinyproto::Packet<64> rx_packet;
+
+void setup()
+{
+    Serial.begin(115200);
+    proto.beginToSerial();
+}
 
 void loop()
 {
-    ...
-    if ( needToStop )
-    {
-        proto.end();
+    // Send a message using Packet helper
+    tinyproto::Packet<64> tx_packet;
+    tx_packet.put("Hello");
+    proto.write(tx_packet);
+
+    // Receive
+    int len = proto.read(rx_packet);
+    if (len > 0) {
+        const char *msg = (const char *)rx_packet.data();
+        // Process message
     }
 }
 @endcode
 
+ \subsection arduino_light_close Stopping Communication
+
+@code{.cpp}
+void stopProtocol()
+{
+    proto.end();
+}
+@endcode
+
+ \section arduino_fd Full-Duplex Protocol Examples
+
+ The Full-Duplex protocol (\ref FULL_DUPLEX_API) provides reliable communication with
+ automatic retransmission, sliding window, and CRC error detection. It supports both
+ ABM (peer-to-peer) and NRM (primary/secondary) modes.
+
+ \subsection arduino_fd_abm ABM Mode (Peer-to-Peer)
+
+@code{.cpp}
+#include "TinyProtocolFd.h"
+
+// Static 512-byte buffer — no heap allocation
+tinyproto::Fd<512> proto;
+
+void onReceive(void *udata, uint8_t addr, tinyproto::IPacket &pkt)
+{
+    // Process received message
+    Serial.write(pkt.data(), pkt.size());
+}
+
+void setup()
+{
+    Serial.begin(115200);
+    proto.setReceiveCallback(onReceive);
+    proto.setWindowSize(3);    // sliding window of 3 frames
+    proto.enableCrc16();       // FCS-16 error detection
+    proto.begin();
+}
+
+void loop()
+{
+    // Feed incoming serial bytes to the protocol
+    if (Serial.available()) {
+        uint8_t byte = Serial.read();
+        proto.run_rx(&byte, 1);
+    }
+
+    // Get protocol bytes and send to serial
+    uint8_t tx_byte;
+    if (proto.run_tx(&tx_byte, 1) == 1) {
+        Serial.write(tx_byte);
+    }
+}
+@endcode
+
+ To send application data:
+
+@code{.cpp}
+void sendMessage()
+{
+    const char *msg = "Hello from Arduino!";
+    proto.write(msg, strlen(msg) + 1);
+}
+@endcode
+
+ \subsection arduino_fd_dynamic Dynamic Buffer (Powerful MCUs)
+
+ On boards with more RAM (Due, Zero, ESP32, Teensy), you can use dynamic allocation:
+
+@code{.cpp}
+#include "TinyProtocolFd.h"
+
+// Dynamic allocation — 2048 bytes determined at runtime
+tinyproto::FdD proto(2048);
+
+void setup()
+{
+    Serial.begin(115200);
+    proto.setWindowSize(7);
+    proto.enableCrc32();
+    proto.begin();
+}
+@endcode
+
+ \subsection arduino_fd_events Connection Events
+
+ You can monitor connection and disconnection events:
+
+@code{.cpp}
+void onConnect(void *udata, uint8_t addr, bool connected)
+{
+    if (connected)
+        Serial.println("Connected!");
+    else
+        Serial.println("Disconnected!");
+}
+
+void setup()
+{
+    // ... other init ...
+    proto.setConnectEventCallback(onConnect);
+    proto.begin();
+}
+@endcode
 
 */

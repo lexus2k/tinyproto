@@ -46,6 +46,21 @@ extern "C"
 /**
  * @defgroup LIGHT_API Tiny light protocol API functions
  * @{
+ *
+ * @brief Simple SLIP-like framing protocol with optional CRC.
+ *
+ * @details The Light protocol provides the simplest way to send and receive
+ *          framed messages. It uses HDLC low-level framing under the hood but
+ *          adds no acknowledgments or retransmission. It has very low memory
+ *          consumption (~800 bytes of flash).
+ *
+ *          Use this protocol when:
+ *          - You need minimal overhead and low flash usage
+ *          - The transport is reliable enough that lost frames are acceptable
+ *          - You want blocking read/write semantics
+ *
+ *          For reliable delivery with automatic retransmission, use the
+ *          Full-Duplex protocol (\ref FULL_DUPLEX_API).
  */
 
 /*************************************************************
@@ -90,7 +105,7 @@ extern "C"
      * @param pdata - pointer to a user private data. This pointer is passed to write_func/read_func.
      * @see write_block_cb_t
      * @see read_block_cb_t
-     * @return TINY_NO_ERROR or error code.
+     * @return TINY_SUCCESS or error code.
      * @remarks This function is not thread safe.
      */
     extern int tiny_light_init(STinyLightData *handle, write_block_cb_t write_func, read_block_cb_t read_func,
@@ -100,7 +115,7 @@ extern "C"
      * The function closes  channel.
      * @param handle - pointer to Tiny Light data.
      * @see tiny_init()
-     * @return TINY_ERR_INVALID_DATA, TINY_NO_ERROR.
+     * @return TINY_ERR_INVALID_DATA, TINY_SUCCESS.
      * @remarks This function is not thread safe.
      */
     extern int tiny_light_close(STinyLightData *handle);

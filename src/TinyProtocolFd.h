@@ -27,10 +27,10 @@
 */
 
 /**
- This is Tiny protocol implementation for microcontrollers
+ This is Tiny protocol Full-Duplex C++ wrapper implementation.
 
  @file
- @brief Tiny protocol Arduino API
+ @brief Tiny Protocol Full Duplex C++ API
 
 */
 #pragma once
@@ -54,11 +54,15 @@ namespace tinyproto
  */
 
 /**
- *  IFd class incapsulates Full Duplex Protocol functionality.
- *  Full Duplex version of the Protocol allows to send messages with
- *  confirmation.
- *  Remember that you may use always C-style API functions
- *  instead C++. Please refer to documentation.
+ *  IFd class encapsulates Full Duplex Protocol functionality.
+ *  It provides reliable communication with sliding window,
+ *  automatic retransmission, and CRC error detection.
+ *  Supports both ABM (peer-to-peer) and NRM (primary/secondary) modes.
+ *
+ *  Use Fd<N> for static buffer allocation (embedded systems) or
+ *  FdD for dynamic allocation (desktop / powerful MCUs).
+ *
+ *  You may also use the C-style API functions (tiny_fd_*) directly.
  */
 class IFd
 {
@@ -343,7 +347,9 @@ private:
 };
 
 /**
- * This is class, which allocates buffers statically. Use it for systems with low resources.
+ * This is class, which allocates buffers statically. Use it for embedded systems with limited resources.
+ * Template parameter S specifies the buffer size in bytes. Use tiny_fd_buffer_size_by_mtu()
+ * to calculate the required size for your MTU and window configuration.
  */
 template <int S> class Fd: public IFd
 {
@@ -358,9 +364,9 @@ private:
 };
 
 /**
- * This is special class for Full duplex protocol, which allocates buffers dynamically.
- * We need to have separate class for this, as on small microcontrollers dynamic allocation
- * in basic class increases flash consumption, even if dynamic memory is not used.
+ * This is special class for Full Duplex protocol, which allocates buffers dynamically.
+ * Use it on desktop systems or powerful microcontrollers where heap allocation is acceptable.
+ * On small microcontrollers, prefer Fd<N> to avoid pulling in dynamic allocation code.
  */
 class FdD: public IFd
 {

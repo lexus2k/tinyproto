@@ -27,10 +27,10 @@
 */
 
 /**
- This is Tiny protocol implementation for microcontrollers
+ This is Tiny protocol HDLC C++ wrapper implementation.
 
  @file
- @brief Tiny protocol Arduino API
+ @brief Tiny Protocol HDLC C++ API
 
 */
 #pragma once
@@ -53,11 +53,13 @@ namespace tinyproto
  */
 
 /**
- *  Hdlc class incapsulates hdlc Protocol functionality.
- *  hdlc version of the Protocol allows to send messages with
- *  confirmation.
- *  Remember that you may use always C-style API functions
- *  instead C++. Please refer to documentation.
+ *  Hdlc class encapsulates HDLC low-level framing functionality.
+ *  It handles flag bytes (0x7E), byte stuffing, and CRC validation.
+ *  This class provides raw HDLC framing — it does not perform
+ *  acknowledgments or retransmission. For reliable delivery,
+ *  use the Full Duplex protocol (IFd / Fd<N> / FdD).
+ *
+ *  You may also use the C-style API functions (hdlc_*) directly.
  */
 class Hdlc
 {

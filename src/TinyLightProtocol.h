@@ -27,10 +27,10 @@
 */
 
 /**
- This is Tiny light protocol implementation for microcontrollers
+ This is Tiny Light protocol C++ wrapper implementation.
 
  @file
- @brief Tiny light protocol Arduino API
+ @brief Tiny Light protocol C++ API
 */
 
 #ifndef _TINY_LIGHT_PROTOCOL_H_
@@ -54,9 +54,12 @@ namespace tinyproto
  */
 
 /**
- *  ProtoLight class incapsulates Protocol functionality.
- *  Remember that you may use always C-style API functions
- *  instead C++. Please refer to documentation.
+ *  Light class encapsulates the Light protocol functionality.
+ *  It provides simple SLIP-like framing with optional CRC.
+ *  No acknowledgments or retransmission — use it when simplicity
+ *  and low overhead are more important than guaranteed delivery.
+ *
+ *  You may also use the C-style API functions (tiny_light_*) directly.
  */
 class Light
 {
