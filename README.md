@@ -108,25 +108,25 @@ TinyProto implements all standard HDLC frame types:
 
 ```
 ┌─────────────────────────────────────────────────┐
-│                 Application                      │
+│                   Application                   │
 ├──────────────┬──────────────┬───────────────────┤
 │  C++ API     │   C API      │   Python API      │
 │  IFd / Hdlc  │  tiny_fd_*   │   tinyproto.*     │
 │  Light       │  hdlc_*      │                   │
 ├──────────────┴──────────────┴───────────────────┤
-│           Full-Duplex Protocol (FD)              │
+│            Full-Duplex Protocol (FD)            │
 │    ┌─────────────┬────────────┬───────────┐     │
 │    │ I-frame     │  S-frame   │  U-frame  │     │
 │    │ queue       │  handler   │  handler  │     │
 │    └─────────────┴────────────┴───────────┘     │
 ├─────────────────────────────────────────────────┤
-│           HDLC Low-Level Framing                 │
-│         (byte stuffing, CRC, flags)              │
+│             HDLC Low-Level Framing              │
+│          (byte stuffing, CRC, flags)            │
 ├─────────────────────────────────────────────────┤
-│           Hardware Abstraction Layer              │
-│     (timers, mutexes, serial I/O)                │
+│           Hardware Abstraction Layer            │
+│         (timers, mutexes, serial I/O)           │
 ├─────────────────────────────────────────────────┤
-│     UART  │  SPI  │  I2C  │  USB  │  TCP  │ ... │
+│     UART  │  SPI  │  I2C  │  USB  │  TCP  │ ...│
 └─────────────────────────────────────────────────┘
 ```
 
