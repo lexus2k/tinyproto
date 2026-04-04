@@ -88,7 +88,7 @@ public:
         while ( len > 0 )
         {
             int sent = m_serial.write(ptr, len);
-            if ( sent < 0 )
+            if ( sent <= 0 )
             {
                 break;
             }

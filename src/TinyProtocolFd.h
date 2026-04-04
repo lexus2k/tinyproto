@@ -371,15 +371,18 @@ public:
      */
     explicit FdD(int size)
         : IFd(reinterpret_cast<uint8_t *>(new uintptr_t[(size + TINY_ALIGN_STRUCT_VALUE - 1) / TINY_ALIGN_STRUCT_VALUE]), size)
+        , m_allocated(reinterpret_cast<uintptr_t *>(m_buffer))
     {
     }
 
     ~FdD()
     {
-        delete[] m_buffer;
+        end();
+        delete[] m_allocated;
     }
 
 private:
+    uintptr_t *m_allocated = nullptr;
 };
 
 /**

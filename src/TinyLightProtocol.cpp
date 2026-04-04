@@ -64,7 +64,7 @@ int Light::read(char *buf, int size)
 
 int Light::write(const IPacket &pkt)
 {
-    return tiny_light_send(&m_data, pkt.m_buf, pkt.m_len) > 0;
+    return tiny_light_send(&m_data, pkt.m_buf, pkt.m_len);
 }
 
 int Light::read(IPacket &pkt)

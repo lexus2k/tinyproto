@@ -22,6 +22,7 @@ OBJ_UNIT_TEST = \
         unittest/tiny_fd_nrm_tests.o \
         unittest/fd_tests.o \
         unittest/fd_multidrop_tests.o \
+        unittest/cpp_wrapper_tests.o \
 
 
 unittest: $(OBJ_UNIT_TEST) library

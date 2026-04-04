@@ -194,7 +194,10 @@ void Proto::end()
         m_readThread = nullptr;
     }
 #endif
-    m_link->end();
+    if ( m_link )
+    {
+        m_link->end();
+    }
     return;
 }
 
@@ -314,8 +317,10 @@ void Proto::setTxDelay( uint32_t delay )
 
 int Proto::getLostRxFrames()
 {
+    tiny_mutex_lock( &m_mutex );
     int val = m_lostRxFrames;
     m_lostRxFrames = 0;
+    tiny_mutex_unlock( &m_mutex );
     return val;
 }
 #endif

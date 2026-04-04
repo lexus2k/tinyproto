@@ -124,15 +124,19 @@ int IHdlcLinkLayer::getData(uint8_t *data, int size)
 {
     if ( tiny_events_wait( &m_events, TX_MESSAGE_SENDING, EVENT_BITS_LEAVE, getTimeout() ) )
     {
-        if ( m_flushFlag )
+        tiny_mutex_lock( &m_sendMutex );
+        bool flush = m_flushFlag;
+        if ( flush )
         {
-//            tiny_mutex_lock( &m_sendMutex );
             m_flushFlag = false;
             hdlc_ll_reset( m_handle, HDLC_LL_RESET_TX_ONLY );
             tiny_events_clear( &m_events, TX_MESSAGE_SENDING );
             tiny_events_set( &m_events, TX_QUEUE_FREE );
-//            tiny_events_clear( &m_events, TX_MESSAGE_SENDING );
-//            tiny_mutex_unlock( &m_sendMutex );
+        }
+        tiny_mutex_unlock( &m_sendMutex );
+        if ( flush )
+        {
+            return 0;
         }
         return hdlc_ll_run_tx(m_handle, data, size);
     }

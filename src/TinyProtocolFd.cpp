@@ -99,7 +99,7 @@ int IFd::run_rx(const void *data, int len)
 
 int IFd::run_rx(read_block_cb_t read_func)
 {
-    uint8_t buf[4];
+    uint8_t buf[64];
     int len = read_func(m_userData, buf, sizeof(buf));
     if ( len <= 0 )
     {
@@ -115,7 +115,7 @@ int IFd::run_tx(void *data, int max_size)
 
 int IFd::run_tx(write_block_cb_t write_func)
 {
-    uint8_t buf[4];
+    uint8_t buf[64];
     int len = tiny_fd_get_tx_data(m_handle, buf, sizeof(buf), 0);
     if ( len <= 0 )
     {
@@ -125,9 +125,9 @@ int IFd::run_tx(write_block_cb_t write_func)
     while ( len )
     {
         int result = write_func(m_userData, ptr, len);
-        if ( result < 0 )
+        if ( result <= 0 )
         {
-            return result;
+            return result < 0 ? result : TINY_ERR_FAILED;
         }
         len -= result;
         ptr += result;
