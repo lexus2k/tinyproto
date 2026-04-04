@@ -1,6 +1,6 @@
 {
   "name": "Tiny Protocol",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "Tiny Protocol is layer 2 simple protocol. It is intended to be used for the systems with small amount of resources",
   "keywords": "protocol communication protocol-library hdlc-like hdlc arduino microcontroller",
   "authors":

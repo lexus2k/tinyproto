@@ -41,9 +41,13 @@ typedef struct
     hdlc_crc_t crc_type;
     int mtu;
     int window_size;
+    int mode;
+    int peers_count;
+    int addr;
     void *buffer;
     PyObject *on_frame_send;
     PyObject *on_frame_read;
+    PyObject *on_frame_read_ui;
     PyObject *on_connect_event;
     PyObject *read_func;
     PyObject *write_func;
@@ -51,7 +55,9 @@ typedef struct
 } Fd;
 
 static PyMemberDef Fd_members[] = {
-    {"mtu", T_INT, offsetof(Fd, mtu), 0, "Maximum size of payload"}, {NULL} /* Sentinel */
+    {"mtu", T_INT, offsetof(Fd, mtu), 0, "Maximum size of payload"},
+    {"window_size", T_INT, offsetof(Fd, window_size), 0, "Sliding window size (1-7)"},
+    {NULL} /* Sentinel */
 };
 
 /////////////////////////////// ALLOC/DEALLOC
@@ -59,6 +65,7 @@ static PyMemberDef Fd_members[] = {
 static void Fd_dealloc(Fd *self)
 {
     Py_XDECREF(self->on_frame_read);
+    Py_XDECREF(self->on_frame_read_ui);
     Py_XDECREF(self->on_frame_send);
     Py_XDECREF(self->on_connect_event);
     Py_XDECREF(self->read_func);
@@ -73,11 +80,15 @@ static int Fd_init(Fd *self, PyObject *args, PyObject *kwds)
     self->crc_type = HDLC_CRC_16;
     self->on_frame_send = NULL;
     self->on_frame_read = NULL;
+    self->on_frame_read_ui = NULL;
     self->on_connect_event = NULL;
     self->read_func = NULL;
     self->write_func = NULL;
     self->mtu = 1500;
     self->window_size = 7;
+    self->mode = TINY_FD_MODE_ABM;
+    self->peers_count = 0;
+    self->addr = 0;
     self->error_flag = 0;
     return 0;
 }
@@ -104,10 +115,31 @@ static void on_frame_read(void *user_data, uint8_t addr, uint8_t *data, int len)
         PyGILState_STATE gstate;
         gstate = PyGILState_Ensure();
 
+        PyObject *arg_addr = PyLong_FromLong((long)addr);
         PyObject *arg = PyByteArray_FromStringAndSize((const char *)data, (Py_ssize_t)len);
-        PyObject *temp = PyObject_CallFunctionObjArgs(self->on_frame_read, arg, NULL);
-        Py_XDECREF(temp); // Dereference result
-        Py_DECREF(arg);   // We do not need ByteArray anymore
+        PyObject *temp = PyObject_CallFunctionObjArgs(self->on_frame_read, arg_addr, arg, NULL);
+        Py_XDECREF(temp);
+        Py_DECREF(arg);
+        Py_DECREF(arg_addr);
+
+        PyGILState_Release(gstate);
+    }
+}
+
+static void on_frame_read_ui(void *user_data, uint8_t addr, uint8_t *data, int len)
+{
+    Fd *self = (Fd *)user_data;
+    if ( self->on_frame_read_ui )
+    {
+        PyGILState_STATE gstate;
+        gstate = PyGILState_Ensure();
+
+        PyObject *arg_addr = PyLong_FromLong((long)addr);
+        PyObject *arg = PyByteArray_FromStringAndSize((const char *)data, (Py_ssize_t)len);
+        PyObject *temp = PyObject_CallFunctionObjArgs(self->on_frame_read_ui, arg_addr, arg, NULL);
+        Py_XDECREF(temp);
+        Py_DECREF(arg);
+        Py_DECREF(arg_addr);
 
         PyGILState_Release(gstate);
     }
@@ -121,10 +153,12 @@ static void on_frame_send(void *user_data, uint8_t addr, const uint8_t *data, in
         PyGILState_STATE gstate;
         gstate = PyGILState_Ensure();
 
+        PyObject *arg_addr = PyLong_FromLong((long)addr);
         PyObject *arg = PyByteArray_FromStringAndSize((const char *)data, (Py_ssize_t)len);
-        PyObject *temp = PyObject_CallFunctionObjArgs(self->on_frame_send, arg, NULL);
-        Py_XDECREF(temp); // Dereference result
-        Py_DECREF(arg);   // We do not need ByteArray anymore
+        PyObject *temp = PyObject_CallFunctionObjArgs(self->on_frame_send, arg_addr, arg, NULL);
+        Py_XDECREF(temp);
+        Py_DECREF(arg);
+        Py_DECREF(arg_addr);
 
         PyGILState_Release(gstate);
     }
@@ -160,8 +194,11 @@ static PyObject *Fd_begin(Fd *self)
     init.on_read_cb = on_frame_read;
     init.on_send_cb = on_frame_send;
     init.on_connect_event_cb = on_connect_event;
+    init.on_read_ui_cb = on_frame_read_ui;
     init.crc_type = self->crc_type;
-    init.buffer_size = tiny_fd_buffer_size_by_mtu_ex(1, self->mtu, self->window_size, init.crc_type, 2);
+    init.buffer_size = tiny_fd_buffer_size_by_mtu_ex(
+        self->peers_count > 0 ? self->peers_count : 1,
+        self->mtu, self->window_size, init.crc_type, 2);
     self->buffer = PyObject_Malloc(init.buffer_size);
     init.buffer = self->buffer;
     init.send_timeout = 1000;
@@ -169,6 +206,9 @@ static PyObject *Fd_begin(Fd *self)
     init.retries = 2;
     init.window_frames = self->window_size;
     init.mtu = self->mtu;
+    init.mode = (uint8_t)self->mode;
+    init.peers_count = (uint8_t)self->peers_count;
+    init.addr = (uint8_t)self->addr;
     int result = tiny_fd_init(&self->handle, &init);
     return PyLong_FromLong((long)result);
 }
@@ -372,6 +412,69 @@ static PyObject *Fd_get_status(Fd *self)
     return PyLong_FromLong((long)result);
 }
 
+static PyObject *Fd_send_to(Fd *self, PyObject *args)
+{
+    int addr;
+    Py_buffer buffer{};
+    if ( !PyArg_ParseTuple(args, "is*", &addr, &buffer) )
+    {
+        return NULL;
+    }
+    int result;
+    Py_BEGIN_ALLOW_THREADS;
+    result = tiny_fd_send_packet_to(self->handle, (uint8_t)addr, buffer.buf, buffer.len, 1000);
+    Py_END_ALLOW_THREADS;
+    PyBuffer_Release(&buffer);
+    return PyLong_FromLong((long)result);
+}
+
+static PyObject *Fd_register_peer(Fd *self, PyObject *args)
+{
+    int addr;
+    if ( !PyArg_ParseTuple(args, "i", &addr) )
+    {
+        return NULL;
+    }
+    int result = tiny_fd_register_peer(self->handle, (uint8_t)addr);
+    return PyLong_FromLong((long)result);
+}
+
+static PyObject *Fd_send_ui(Fd *self, PyObject *args)
+{
+    Py_buffer buffer{};
+    if ( !PyArg_ParseTuple(args, "s*", &buffer) )
+    {
+        return NULL;
+    }
+    int result = tiny_fd_send_ui_packet(self->handle, buffer.buf, buffer.len);
+    PyBuffer_Release(&buffer);
+    return PyLong_FromLong((long)result);
+}
+
+static PyObject *Fd_send_ui_to(Fd *self, PyObject *args)
+{
+    int addr;
+    Py_buffer buffer{};
+    if ( !PyArg_ParseTuple(args, "is*", &addr, &buffer) )
+    {
+        return NULL;
+    }
+    int result = tiny_fd_send_ui_packet_to(self->handle, (uint8_t)addr, buffer.buf, buffer.len);
+    PyBuffer_Release(&buffer);
+    return PyLong_FromLong((long)result);
+}
+
+static PyObject *Fd_set_ka_timeout(Fd *self, PyObject *args)
+{
+    unsigned int timeout;
+    if ( !PyArg_ParseTuple(args, "I", &timeout) )
+    {
+        return NULL;
+    }
+    tiny_fd_set_ka_timeout(self->handle, (uint32_t)timeout);
+    Py_RETURN_NONE;
+}
+
 /*
 void tiny_fd_set_ka_timeout 	( 	tiny_fd_handle_t  	handle,
                 uint32_t  	keep_alive
@@ -426,7 +529,22 @@ static int Fd_set_on_connect_event(Fd *self, PyObject *value, void *closure)
     return 0;
 }
 
-static PyObject *Fd_get_crc(Fd *self, void *closure)
+static PyObject *Fd_get_on_read_ui(Fd *self, void *closure)
+{
+    Py_INCREF(self->on_frame_read_ui);
+    return self->on_frame_read_ui;
+}
+
+static int Fd_set_on_read_ui(Fd *self, PyObject *value, void *closure)
+{
+    PyObject *tmp = self->on_frame_read_ui;
+    Py_INCREF(value);
+    self->on_frame_read_ui = value;
+    Py_XDECREF(tmp);
+    return 0;
+}
+
+static PyObject* Fd_get_crc(Fd *self, void * closure)
 {
     return PyLong_FromLong( self->crc_type );
 }
@@ -449,15 +567,79 @@ static int Fd_set_crc(Fd *self, PyObject *value)
     {
         PyErr_Format(PyExc_RuntimeError, "Allowable CRC values are: 0 (AUTO), 8, 16, 32, 255 (OFF)");
     }
-    return result/* 0 on success, -1 on failure with error set. */;
+    return result;
+}
+
+static PyObject *Fd_get_mode(Fd *self, void *closure)
+{
+    return PyLong_FromLong(self->mode);
+}
+
+static int Fd_set_mode(Fd *self, PyObject *value, void *closure)
+{
+    if ( value && PyLong_Check(value) )
+    {
+        int temp = PyLong_AsLong(value);
+        if ( temp == TINY_FD_MODE_ABM || temp == TINY_FD_MODE_NRM )
+        {
+            self->mode = temp;
+            return 0;
+        }
+    }
+    PyErr_Format(PyExc_RuntimeError, "Allowable mode values are: 0 (ABM), 1 (NRM)");
+    return -1;
+}
+
+static PyObject *Fd_get_peers_count(Fd *self, void *closure)
+{
+    return PyLong_FromLong(self->peers_count);
+}
+
+static int Fd_set_peers_count(Fd *self, PyObject *value, void *closure)
+{
+    if ( value && PyLong_Check(value) )
+    {
+        int temp = PyLong_AsLong(value);
+        if ( temp >= 0 && temp <= 63 )
+        {
+            self->peers_count = temp;
+            return 0;
+        }
+    }
+    PyErr_Format(PyExc_RuntimeError, "peers_count must be 0-63");
+    return -1;
+}
+
+static PyObject *Fd_get_addr(Fd *self, void *closure)
+{
+    return PyLong_FromLong(self->addr);
+}
+
+static int Fd_set_addr(Fd *self, PyObject *value, void *closure)
+{
+    if ( value && PyLong_Check(value) )
+    {
+        int temp = PyLong_AsLong(value);
+        if ( temp >= 0 && temp <= 62 )
+        {
+            self->addr = temp;
+            return 0;
+        }
+    }
+    PyErr_Format(PyExc_RuntimeError, "addr must be 0 (primary) or 1-62 (secondary)");
+    return -1;
 }
 
 static PyGetSetDef Fd_getsetters[] = {
-    {"on_read", (getter)Fd_get_on_read, (setter)Fd_set_on_read, "Callback for incoming messages", NULL},
-    {"on_send", (getter)Fd_get_on_send, (setter)Fd_set_on_send, "Callback for successfully sent messages", NULL},
+    {"on_read", (getter)Fd_get_on_read, (setter)Fd_set_on_read, "Callback for incoming I-frames: func(addr, data)", NULL},
+    {"on_read_ui", (getter)Fd_get_on_read_ui, (setter)Fd_set_on_read_ui, "Callback for incoming UI frames: func(addr, data)", NULL},
+    {"on_send", (getter)Fd_get_on_send, (setter)Fd_set_on_send, "Callback for successfully sent messages: func(addr, data)", NULL},
     {"on_connect_event", (getter)Fd_get_on_connect_event, (setter)Fd_set_on_connect_event,
-     "Callback for connection status change events", NULL},
-    {"crc", (getter)Fd_get_crc, (setter)Fd_set_crc, "CRC value", NULL},
+     "Callback for connection status change: func(addr, connected)", NULL},
+    {"crc", (getter)Fd_get_crc, (setter)Fd_set_crc, "CRC type: 0 (AUTO), 8, 16, 32, 255 (OFF)", NULL},
+    {"mode", (getter)Fd_get_mode, (setter)Fd_set_mode, "Protocol mode: 0 (ABM), 1 (NRM)", NULL},
+    {"peers_count", (getter)Fd_get_peers_count, (setter)Fd_set_peers_count, "Max peers (0-63, NRM primary only)", NULL},
+    {"addr", (getter)Fd_get_addr, (setter)Fd_set_addr, "Station address: 0 (primary) or 1-62 (secondary)", NULL},
     {NULL} /* Sentinel */
 };
 
@@ -467,12 +649,17 @@ static PyMethodDef Fd_methods[] = {
     {"begin", (PyCFunction)Fd_begin, METH_NOARGS, "Initializes Fd protocol"},
     {"end", (PyCFunction)Fd_end, METH_NOARGS, "Stops Fd protocol"},
     {"send", (PyCFunction)Fd_send, METH_VARARGS, "Sends new message to remote side"},
+    {"send_to", (PyCFunction)Fd_send_to, METH_VARARGS, "Sends message to specific peer: send_to(addr, data)"},
+    {"send_ui", (PyCFunction)Fd_send_ui, METH_VARARGS, "Sends UI (connectionless) frame"},
+    {"send_ui_to", (PyCFunction)Fd_send_ui_to, METH_VARARGS, "Sends UI frame to specific peer: send_ui_to(addr, data)"},
+    {"register_peer", (PyCFunction)Fd_register_peer, METH_VARARGS, "Registers peer address (NRM primary)"},
     {"disconnect", (PyCFunction)Fd_disconnect, METH_NOARGS, "Sends disconnect frame"},
     {"rx", (PyCFunction)Fd_rx, METH_VARARGS, "Passes rx data"},
     {"tx", (PyCFunction)Fd_tx, METH_VARARGS, "Fills specified buffer with tx data"},
     {"run_rx", (PyCFunction)Fd_run_rx, METH_VARARGS, "Reads data from user callback and parses them"},
     {"run_tx", (PyCFunction)Fd_run_tx, METH_VARARGS, "Writes data to user callback"},
     {"get_status", (PyCFunction)Fd_get_status, METH_NOARGS, "Get connection status"},
+    {"set_ka_timeout", (PyCFunction)Fd_set_ka_timeout, METH_VARARGS, "Set keep-alive timeout in ms"},
     {NULL} /* Sentinel */
 };
 

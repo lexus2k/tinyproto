@@ -1,3 +1,43 @@
+== ver. 1.2.0 =======================================
+ - HDLC ABM compliance improvements:
+   - Added DM (Disconnected Mode) frame response
+   - Added FRMR (Frame Reject) handler
+   - Added RSET (Reset) handler
+   - Added RNR (Receiver Not Ready) recognition
+   - Added P/F bit enforcement in ABM mode
+   - Added UI (Unnumbered Information) frames with send/receive API
+   - Added SREJ (Selective Reject) S-frame support
+ - NRM (Normal Response Mode) completion:
+   - Fixed P/F burst (only last I-frame in burst gets P/F bit)
+   - Fixed CR bit on idle-path SNRM
+   - Added disconnected state frame filtering
+   - Comprehensive NRM test coverage (15 tests)
+ - C++ wrapper reliability fixes:
+   - Fixed Light::write(IPacket) return value (was bool, now byte count)
+   - Fixed IFd::run_tx infinite loop on zero-write
+   - Increased IFd::run_rx buffer from 4 to 64 bytes
+   - Fixed IHdlcLinkLayer flush flag race condition
+   - Fixed ISerialLinkLayer::runTx infinite loop
+   - Fixed FdD destructor type mismatch (uintptr_t[] vs uint8_t[])
+   - Fixed Proto::end() null pointer check
+   - Fixed Proto::getLostRxFrames() mutex protection
+ - Python bindings updated:
+   - Added NRM mode support (mode, addr, peers_count properties)
+   - Added send_to(), register_peer() for multi-peer NRM
+   - Added send_ui(), send_ui_to() for UI frames
+   - Added on_read_ui callback for receiving UI frames
+   - Added set_ka_timeout() method
+   - Added window_size property
+   - Fixed on_read/on_send callbacks to pass peer address
+   - Exported module constants (MODE_ABM, MODE_NRM, CRC_*, PRIMARY_ADDR)
+   - Removed leftover test function from module
+ - CI/CD: pinned setuptools<78 for ESP-IDF v4.3 compatibility
+ - Added .gitignore for build artifacts
+ - Comprehensive unit tests: 101 tests, 1873 checks
+ - Updated documentation with protocol mode diagrams and examples
+
+== ver. 1.1.1 =======================================
+
 == ver. 0.9.3 =======================================
  - Fixed protocol for Arduino Zero/M0+
 

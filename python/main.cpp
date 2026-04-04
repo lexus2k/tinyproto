@@ -1,5 +1,5 @@
 /*
-    Copyright 2021-2024 (C) Alexey Dynda
+    Copyright 2021-2025 (C) Alexey Dynda
 
     This file is part of Tiny Protocol Library.
 
@@ -30,23 +30,15 @@
 #include "hdlc_ll.h"
 #include "fd.h"
 #include "py_serial.h"
+#include "proto/fd/tiny_fd.h"
+#include "proto/crc/tiny_crc.h"
 
-static PyObject *pants(PyObject *self, PyObject *args)
-{
-    int input;
-    if ( !PyArg_ParseTuple(args, "i", &input) )
-    {
-        return NULL;
-    }
+static PyMethodDef tinyproto_methods[] = {
+    {NULL, NULL, 0, NULL}
+};
 
-    return PyLong_FromLong((long)input * (long)input);
-}
-
-static PyMethodDef tinyproto_methods[] = {{"pants", pants, METH_VARARGS, "Returns a square of an integer."},
-                                          {NULL, NULL, 0, NULL}};
-
-static struct PyModuleDef tinyproto_definition = {PyModuleDef_HEAD_INIT, "tinyproto_", "A Python tiny protocol module",
-                                                  -1, tinyproto_methods};
+static struct PyModuleDef tinyproto_definition = {PyModuleDef_HEAD_INIT, "tinyproto", "A Python tiny protocol module",
+                                                   -1, tinyproto_methods};
 
 PyMODINIT_FUNC PyInit_tinyproto(void)
 {
@@ -74,6 +66,18 @@ PyMODINIT_FUNC PyInit_tinyproto(void)
     PyModule_AddObject(m, "Fd", (PyObject *)&FdType);
     Py_INCREF(&SerialType);
     PyModule_AddObject(m, "Serial", (PyObject *)&SerialType);
+
+    // Protocol mode constants
+    PyModule_AddIntConstant(m, "MODE_ABM", TINY_FD_MODE_ABM);
+    PyModule_AddIntConstant(m, "MODE_NRM", TINY_FD_MODE_NRM);
+    PyModule_AddIntConstant(m, "PRIMARY_ADDR", TINY_FD_PRIMARY_ADDR);
+
+    // CRC type constants
+    PyModule_AddIntConstant(m, "CRC_DEFAULT", HDLC_CRC_DEFAULT);
+    PyModule_AddIntConstant(m, "CRC_8", HDLC_CRC_8);
+    PyModule_AddIntConstant(m, "CRC_16", HDLC_CRC_16);
+    PyModule_AddIntConstant(m, "CRC_32", HDLC_CRC_32);
+    PyModule_AddIntConstant(m, "CRC_OFF", HDLC_CRC_OFF);
 
     return m;
 }
